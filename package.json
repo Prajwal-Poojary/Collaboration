@@ -1,0 +1,17 @@
+{
+    "name": "collaboration-platform",
+    "version": "1.0.0",
+    "description": "Real-time Video Conferencing & Collaboration Platform",
+    "scripts": {
+        "install-all": "npm install && cd client && npm install && cd ../server && npm install && cd ../ai-service && pip install -r requirements.txt",
+        "start": "concurrently \"npm run start:server\" \"npm run start:client\" \"npm run start:ai\"",
+        "start:server": "cd server && npm start",
+        "start:client": "cd client && npm run dev",
+        "start:ai": "cd ai-service && python main.py"
+    },
+    "dependencies": {
+        "concurrently": "^8.2.2"
+    },
+    "author": "Antigravity",
+    "license": "ISC"
+}
