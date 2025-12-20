@@ -36,7 +36,7 @@ const Dashboard = () => {
                     <div className="bg-gradient-to-tr from-indigo-500 to-purple-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
                         <Video size={24} className="text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold font-display tracking-tight text-white">Collab.</h1>
+                    <h1 className="text-3xl font-bold font-display tracking-tight text-white">Void.</h1>
                 </div>
 
                 <div className="flex items-center gap-6">

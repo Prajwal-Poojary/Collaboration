@@ -37,7 +37,7 @@ const Register = () => {
                 className="glass-panel p-10 w-full max-w-md z-10 mx-4"
             >
                 <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold font-display text-white mb-2">Join Collab.</h2>
+                    <h2 className="text-3xl font-bold font-display text-white mb-2">Join Void.</h2>
                     <p className="text-gray-400 text-sm">Start your premium experience</p>
                 </div>
 

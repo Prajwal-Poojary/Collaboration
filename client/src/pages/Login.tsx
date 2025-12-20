@@ -44,7 +44,7 @@ const Login = () => {
                         className="inline-block"
                     >
                         <h1 className="text-5xl font-bold font-display bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
-                            Collab.
+                            Void.
                         </h1>
                         <p className="text-gray-400 text-sm tracking-widest uppercase">Future of Connection</p>
                     </motion.div>

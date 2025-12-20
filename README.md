@@ -1,10 +1,10 @@
-# ✨ Collab. - The Future of Connection
+# 🌌 Void - The Future of Connection
 
 > **Premium Real-Time Video Conferencing & AI Collaboration Platform**
 
 ![Project Banner](https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop)
 
-**Collab** is a state-of-the-art video conferencing application designed for immersive collaboration. It features a stunning "Deep Space" glassmorphism UI, real-time AI transcription, and seamless screen sharing, all built on a robust full-stack architecture.
+**Void** is a state-of-the-art video conferencing application designed for immersive collaboration. It features a stunning "Deep Space" glassmorphism UI, real-time AI transcription, and seamless screen sharing, all built on a robust full-stack architecture.
 
 ---
 
@@ -104,4 +104,4 @@ Collaboration/
 
 ## 🤝 Contributing
 
-We welcome contributions to make Collab even better! Please fork the repo and submit a PR.
+We welcome contributions to make Void even better! Please fork the repo and submit a PR.
