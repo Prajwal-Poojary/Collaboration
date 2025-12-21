@@ -35,3 +35,13 @@ ai-service/models/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# App Data
+server/uploads/
+ai-service/temp_uploads/
+
+# Client Build & Logs
+*.local
+dist-ssr/
+pnpm-debug.log*
+lerna-debug.log*

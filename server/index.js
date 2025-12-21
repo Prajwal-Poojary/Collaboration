@@ -41,7 +41,8 @@ io.on('connection', (socket) => {
 
     socket.on('join-room', ({ meetingId, userId, name }) => {
         socket.join(meetingId);
-        console.log(`User ${name} (${userId}) joined room ${meetingId}`);
+        socket.join(userId); // Join a room with the user's ID for private messaging (signaling)
+        console.log(`User ${name} (${userId}) joined room ${meetingId} and personal room ${userId}`);
         socket.to(meetingId).emit('user-connected', { userId, name });
     });
 
