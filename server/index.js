@@ -72,6 +72,21 @@ io.on('connection', (socket) => {
         });
     });
 
+    socket.on('start-screen-share', ({ meetingId, userId }) => {
+        console.log(`User ${userId} started screen sharing in ${meetingId}`);
+        socket.to(meetingId).emit('user-started-sharing', { userId });
+    });
+
+    socket.on('stop-screen-share', ({ meetingId, userId }) => {
+        console.log(`User ${userId} stopped screen sharing in ${meetingId}`);
+        socket.to(meetingId).emit('user-stopped-sharing', { userId });
+    });
+
+    socket.on('video-status-change', ({ meetingId, userId, isVideoOn }) => {
+        console.log(`User ${userId} video status changed to ${isVideoOn}`);
+        socket.to(meetingId).emit('user-video-status', { userId, isVideoOn });
+    });
+
     socket.on('send-message', async ({ meetingId, text, senderId, senderName }) => {
         try {
             const message = await Message.create({
