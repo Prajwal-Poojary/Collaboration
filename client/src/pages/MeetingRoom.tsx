@@ -43,6 +43,8 @@ const MeetingRoom = () => {
     const { user } = useContext(AuthContext)!;
     const navigate = useNavigate();
 
+    console.log("MeetingRoom Params:", { meetingId, user });
+
     const [socket, setSocket] = useState<any | null>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [peers, setPeers] = useState<Peer[]>([]);
@@ -56,7 +58,8 @@ const MeetingRoom = () => {
     const myVideoRef = useRef<HTMLVideoElement>(null);
     const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
 
-    const createPeerConnection = (targetUserId: string, name?: string) => {
+    const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string, streamToUse?: MediaStream) => {
+        console.log(`Creating PeerConnection for ${targetUserId} with stream:`, !!streamToUse);
         const peerConnection = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -65,8 +68,9 @@ const MeetingRoom = () => {
         });
 
         peerConnection.onicecandidate = (event) => {
-            if (event.candidate && socket) {
-                socket.emit('ice-candidate', {
+            if (event.candidate) {
+                console.log('Sending ICE candidate to', targetUserId);
+                socketToUse.emit('ice-candidate', {
                     target: targetUserId,
                     candidate: event.candidate,
                     sender: user?._id
@@ -75,6 +79,7 @@ const MeetingRoom = () => {
         };
 
         peerConnection.ontrack = (event) => {
+            console.log('Received track from', targetUserId);
             setPeers(prev => {
                 if (!prev.find(p => p.userId === targetUserId)) {
                     return [...prev, { userId: targetUserId, stream: event.streams[0], name }];
@@ -83,8 +88,8 @@ const MeetingRoom = () => {
             });
         };
 
-        if (stream) {
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+        if (streamToUse) {
+            streamToUse.getTracks().forEach(track => peerConnection.addTrack(track, streamToUse));
         }
 
         peersRef.current[targetUserId] = peerConnection;
@@ -105,9 +110,11 @@ const MeetingRoom = () => {
                 newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
 
                 newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
-                    console.log('User connected:', userId);
-                    const peerConnection = createPeerConnection(userId, name);
+                    console.log('User connected event received:', userId);
+                    // Pass newSocket and currentStream explicitly
+                    const peerConnection = createPeerConnection(userId, newSocket, name, currentStream);
                     peerConnection.createOffer().then(offer => {
+                        console.log('Created Offer for', userId);
                         peerConnection.setLocalDescription(offer);
                         newSocket.emit('offer', {
                             target: userId,
@@ -115,11 +122,14 @@ const MeetingRoom = () => {
                             sender: user?._id,
                             name: user?.name
                         });
-                    });
+                        console.log('Sent Offer to', userId);
+                    }).catch(err => console.error('Error creating offer:', err));
                 });
 
                 newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
-                    const peerConnection = createPeerConnection(sender, name);
+                    console.log('Received Offer from', sender);
+                    // Pass newSocket and currentStream explicitly
+                    const peerConnection = createPeerConnection(sender, newSocket, name, currentStream);
                     await peerConnection.setRemoteDescription(offer);
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
@@ -128,6 +138,7 @@ const MeetingRoom = () => {
                         answer: answer,
                         sender: user?._id
                     });
+                    console.log('Sent Answer to', sender);
                 });
 
                 newSocket.on('answer', async ({ answer, sender }: AnswerPayload) => {
@@ -255,8 +266,8 @@ const MeetingRoom = () => {
 
             <div className="flex flex-1 overflow-hidden relative z-10 p-6 pt-20 pb-24 gap-6">
                 <div className={`flex-1 grid gap-4 transition-all duration-500 ease-in-out ${peers.length === 0 ? 'grid-cols-1 max-w-4xl mx-auto' :
-                        peers.length === 1 ? 'grid-cols-1 md:grid-cols-2' :
-                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                    peers.length === 1 ? 'grid-cols-1 md:grid-cols-2' :
+                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                     } ${showChat ? 'w-2/3' : 'w-full'}`}>
                     {/* Local Video */}
                     <motion.div

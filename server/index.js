@@ -40,6 +40,7 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     socket.on('join-room', ({ meetingId, userId, name }) => {
+        console.log('DEBUG JOIN-ROOM:', { meetingId, userId, name });
         socket.join(meetingId);
         socket.join(userId); // Join a room with the user's ID for private messaging (signaling)
         console.log(`User ${name} (${userId}) joined room ${meetingId} and personal room ${userId}`);
@@ -47,6 +48,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('offer', (data) => {
+        console.log(`Relaying OFFER from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('offer', {
             offer: data.offer,
             sender: data.sender,
@@ -55,6 +57,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('answer', (data) => {
+        console.log(`Relaying ANSWER from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('answer', {
             answer: data.answer,
             sender: data.sender
@@ -62,6 +65,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('ice-candidate', (data) => {
+        console.log(`Relaying ICE CANDIDATE from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('ice-candidate', {
             candidate: data.candidate,
             sender: data.sender
