@@ -361,7 +361,7 @@ const MeetingRoom = () => {
                                 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                             }`}>
 
-                            <VideoDisplay stream={stream} name={`You (${user?.name})`} isLocal={true} isMirrored={true} isVideoOn={videoStatus[user?._id] ?? isVideoOn} />
+                            <VideoDisplay stream={stream} name={`You (${user?.name})`} isLocal={true} isMirrored={true} isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn} />
 
                             {peers.map((peer) => (
                                 <VideoDisplay key={peer.userId} stream={peer.stream} name={peer.name} isVideoOn={videoStatus[peer.userId] ?? true} />
