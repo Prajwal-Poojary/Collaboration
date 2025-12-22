@@ -57,6 +57,15 @@ const MeetingRoom = () => {
 
     const myVideoRef = useRef<HTMLVideoElement>(null);
     const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
+    const [screenSharingId, setScreenSharingId] = useState<string | null>(null);
+    const [videoStatus, setVideoStatus] = useState<{ [key: string]: boolean }>({});
+
+    // Helper to keep ref in sync for existing logic if needed, though we will use VideoDisplay mostly
+    useEffect(() => {
+        if (myVideoRef.current && stream) {
+            myVideoRef.current.srcObject = stream;
+        }
+    }, [stream]);
 
     const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string, streamToUse?: MediaStream) => {
         console.log(`Creating PeerConnection for ${targetUserId} with stream:`, !!streamToUse);
@@ -159,6 +168,20 @@ const MeetingRoom = () => {
                     setMessages(prev => [...prev, message]);
                 });
 
+                newSocket.on('user-started-sharing', ({ userId }: { userId: string }) => {
+                    console.log('User started sharing:', userId);
+                    setScreenSharingId(userId);
+                });
+
+                newSocket.on('user-stopped-sharing', () => {
+                    console.log('User stopped sharing');
+                    setScreenSharingId(null);
+                });
+
+                newSocket.on('user-video-status', ({ userId, isVideoOn }: { userId: string, isVideoOn: boolean }) => {
+                    setVideoStatus(prev => ({ ...prev, [userId]: isVideoOn }));
+                });
+
             })
             .catch(err => console.error('Error accessing media:', err));
 
@@ -187,6 +210,15 @@ const MeetingRoom = () => {
             if (videoTrack) {
                 videoTrack.enabled = !isVideoOn;
                 setIsVideoOn(!isVideoOn);
+                // Update local status map immediately for UI consistency
+                if (user?._id) {
+                    setVideoStatus(prev => ({ ...prev, [user._id]: !isVideoOn }));
+                }
+                socket.emit('video-status-change', {
+                    meetingId,
+                    userId: user?._id,
+                    isVideoOn: !isVideoOn
+                });
             }
         }
     };
@@ -215,6 +247,10 @@ const MeetingRoom = () => {
                     stream.addTrack(screenTrack);
                     setStream(new MediaStream([screenTrack, ...stream.getAudioTracks()]));
 
+                    // Notify server
+                    socket.emit('start-screen-share', { meetingId, userId: user?._id });
+                    setScreenSharingId(user?._id || null);
+
                     // Replace track for all peers
                     Object.values(peersRef.current).forEach(pc => {
                         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
@@ -224,6 +260,10 @@ const MeetingRoom = () => {
                     });
 
                     screenTrack.onended = () => {
+                        // Notify server
+                        socket.emit('stop-screen-share', { meetingId, userId: user?._id });
+                        setScreenSharingId(null);
+
                         // Revert to camera
                         navigator.mediaDevices.getUserMedia({ video: true })
                             .then(camStream => {
@@ -265,34 +305,69 @@ const MeetingRoom = () => {
             </div>
 
             <div className="flex flex-1 overflow-hidden relative z-10 p-6 pt-20 pb-24 gap-6">
-                <div className={`flex-1 grid gap-4 transition-all duration-500 ease-in-out ${peers.length === 0 ? 'grid-cols-1 max-w-4xl mx-auto' :
-                    peers.length === 1 ? 'grid-cols-1 md:grid-cols-2' :
-                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
-                    } ${showChat ? 'w-2/3' : 'w-full'}`}>
-                    {/* Local Video */}
-                    <motion.div
-                        layout
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl group ring-1 ring-white/5"
-                    >
-                        <video
-                            ref={myVideoRef}
-                            muted
-                            autoPlay
-                            playsInline
-                            className="w-full h-full object-cover transform scale-x-[-1]"
-                        />
-                        <div className="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md bg-black/40 border-none">
-                            <span className="text-xs font-semibold tracking-wide">You ({user?.name})</span>
-                            {!isMicOn && <MicOff size={12} className="text-red-400" />}
+                <div className={`flex-1 transition-all duration-500 ease-in-out ${showChat ? 'w-2/3' : 'w-full'}`}>
+                    {screenSharingId ? (
+                        // Spotlight Layout
+                        <div className="flex gap-4 h-full">
+                            <div className="flex-1 relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+                                {screenSharingId === user?._id ? (
+                                    <VideoDisplay
+                                        stream={stream}
+                                        name={`You (${user?.name})`}
+                                        isLocal={true}
+                                        isMirrored={false}
+                                        isVideoOn={videoStatus[user?._id] ?? isVideoOn}
+                                    />
+                                ) : (
+                                    (() => {
+                                        const sharer = peers.find(p => p.userId === screenSharingId);
+                                        return sharer ? (
+                                            <VideoDisplay
+                                                stream={sharer.stream}
+                                                name={sharer.name}
+                                                isVideoOn={videoStatus[sharer.userId] ?? true}
+                                            />
+                                        ) : <div className="flex items-center justify-center h-full text-white">Sharer not found</div>;
+                                    })()
+                                )}
+                            </div>
+                            <div className="w-1/4 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
+                                {screenSharingId !== user?._id && (
+                                    <div className="h-48 flex-shrink-0">
+                                        <VideoDisplay
+                                            stream={stream}
+                                            name={`You (${user?.name})`}
+                                            isLocal={true}
+                                            isMirrored={true}
+                                            isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
+                                        />
+                                    </div>
+                                )}
+                                {peers.filter(p => p.userId !== screenSharingId).map(peer => (
+                                    <div key={peer.userId} className="h-48 flex-shrink-0">
+                                        <VideoDisplay
+                                            stream={peer.stream}
+                                            name={peer.name}
+                                            isVideoOn={videoStatus[peer.userId] ?? true}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </motion.div>
+                    ) : (
+                        // Grid Layout
+                        <div className={`grid gap-4 h-full ${peers.length === 0 ? 'grid-cols-1 max-w-4xl mx-auto' :
+                            peers.length === 1 ? 'grid-cols-1 md:grid-cols-2' :
+                                'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                            }`}>
 
-                    {/* Remote Peers */}
-                    {peers.map((peer) => (
-                        <PeerVideo key={peer.userId} peer={peer} />
-                    ))}
+                            <VideoDisplay stream={stream} name={`You (${user?.name})`} isLocal={true} isMirrored={true} isVideoOn={videoStatus[user?._id] ?? isVideoOn} />
+
+                            {peers.map((peer) => (
+                                <VideoDisplay key={peer.userId} stream={peer.stream} name={peer.name} isVideoOn={videoStatus[peer.userId] ?? true} />
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Chat Panel */}
@@ -386,30 +461,52 @@ const MeetingRoom = () => {
     );
 };
 
-const PeerVideo = ({ peer }: { peer: Peer }) => {
+const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMicOn = true, isVideoOn = true }: { stream: MediaStream | null, name?: string, isLocal?: boolean, isMirrored?: boolean, isMicOn?: boolean, isVideoOn?: boolean }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
-        if (videoRef.current) {
-            videoRef.current.srcObject = peer.stream;
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream;
         }
-    }, [peer.stream]);
+    }, [stream]);
+
+    // Generate random color from name
+    const getInitials = (name?: string) => name ? name.charAt(0).toUpperCase() : '?';
+    const getColor = (name?: string) => {
+        const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
+        let hash = 0;
+        if (name) {
+            for (let i = 0; i < name.length; i++) {
+                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            }
+        }
+        return colors[Math.abs(hash) % colors.length];
+    };
 
     return (
         <motion.div
             layout
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl ring-1 ring-white/5"
+            className="relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl group ring-1 ring-white/5 w-full h-full flex items-center justify-center bg-zinc-900"
         >
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg backdrop-blur-md bg-black/40 border-none">
-                <span className="text-xs font-semibold tracking-wide text-white">{peer.name || 'Participant'}</span>
+            {isVideoOn ? (
+                <video
+                    ref={videoRef}
+                    muted={isLocal} // Always mute local video
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${isMirrored ? 'transform scale-x-[-1]' : ''}`}
+                />
+            ) : (
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-lg ${getColor(name)}`}>
+                    {getInitials(name)}
+                </div>
+            )}
+
+            <div className="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg flex items-center gap-2 backdrop-blur-md bg-black/40 border-none">
+                <span className="text-xs font-semibold tracking-wide text-white">{name || 'Participant'}</span>
+                {isLocal && !isMicOn && <MicOff size={12} className="text-red-400" />}
             </div>
         </motion.div>
     );
