@@ -34,6 +34,12 @@ interface IceCandidatePayload {
     sender: string;
 }
 
+interface Participant {
+    userId: string;
+    name: string;
+    isOnline: boolean;
+}
+
 interface ChatMessage {
     text: string;
     senderName: string;
@@ -62,6 +68,7 @@ const MeetingRoom = () => {
     const [socket, setSocket] = useState<any | null>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [peers, setPeers] = useState<Peer[]>([]);
+    const [allParticipants, setAllParticipants] = useState<Participant[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [showChat, setShowChat] = useState(false);
     const [newMessage, setNewMessage] = useState('');
@@ -361,6 +368,11 @@ const MeetingRoom = () => {
 
                 newSocket.on('user-video-status', ({ userId, isVideoOn }: { userId: string, isVideoOn: boolean }) => {
                     setVideoStatus(prev => ({ ...prev, [userId]: isVideoOn }));
+                });
+
+                newSocket.on('participants-list', (list: Participant[]) => {
+                    console.log('Received participants list:', list);
+                    setAllParticipants(list);
                 });
 
             })
@@ -1042,7 +1054,7 @@ const MeetingRoom = () => {
                     >
                         <div className="p-4 border-b border-white/10 bg-white/5 flex flex-col gap-3">
                             <div className="flex justify-between items-center">
-                                <span className="font-display font-bold">Participants ({peers.length + 1})</span>
+                                <span className="font-display font-bold">Participants ({allParticipants.length})</span>
                                 <button onClick={() => setShowParticipants(false)} className="hover:bg-white/10 p-1 rounded-md transition-colors">
                                     <span className="sr-only">Close</span>
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
@@ -1107,91 +1119,92 @@ const MeetingRoom = () => {
                             )}
                         </div>
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
-                            {/* Me */}
-                            <div className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/5">
-                                <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white relative">
-                                    {user?.name?.charAt(0).toUpperCase() || 'U'}
-                                    {isAdmin && (
-                                        <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-0.5 border border-black" title="Host">
-                                            <Shield size={10} className="text-black fill-current" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="font-medium text-sm flex items-center gap-2">
-                                        {user?.name || 'You'}
-                                        <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">You</span>
-                                    </div>
-                                    <div className="flex gap-2 text-xs text-gray-400">
-                                        <span>{isMicOn ? 'Mic On' : 'Mic Off'}</span>
-                                        <span>•</span>
-                                        <span>{isVideoOn ? 'Video On' : 'Video Off'}</span>
-                                    </div>
-                                </div>
-                            </div>
+                            {/* Participants */}
+                            {allParticipants.map(participant => {
+                                const isMe = participant.userId === user?._id;
 
-                            {/* Peers */}
-                            {peers.map(peer => (
-                                <div key={peer.userId} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5 group">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white bg-gray-700`}>
-                                        {peer.name?.charAt(0).toUpperCase() || '?'}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm truncate">
-                                            {peer.name || 'Participant'}
-                                        </div>
-                                        {isAdmin && (
-                                            <div className="flex gap-2 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                {/* Mic Control */}
-                                                {hardMutedUsers.includes(peer.userId) ? (
-                                                    <button
-                                                        onClick={() => adminUnmuteUser(peer.userId)}
-                                                        className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                        title="Unmute User"
-                                                    >
-                                                        <Check size={14} />
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => adminMuteUser(peer.userId)}
-                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                        title="Mute User"
-                                                    >
-                                                        <MicOff size={14} />
-                                                    </button>
+                                return (
+                                    <div key={participant.userId} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5 group">
+                                        <div className="relative">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${participant.isOnline ? 'bg-indigo-500' : 'bg-gray-700 opacity-60'}`}>
+                                                {participant.name?.charAt(0).toUpperCase() || '?'}
+                                                {(isMe && isAdmin) && (
+                                                    <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-0.5 border border-black" title="Host">
+                                                        <Shield size={10} className="text-black fill-current" />
+                                                    </div>
                                                 )}
-
-                                                {/* Video Control */}
-                                                {hardVideoOffUsers.includes(peer.userId) ? (
-                                                    <button
-                                                        onClick={() => adminAllowVideo(peer.userId)}
-                                                        className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                        title="Allow Video"
-                                                    >
-                                                        <Video size={14} />
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => adminStopVideo(peer.userId)}
-                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                        title="Disable Video"
-                                                    >
-                                                        <VideoOff size={14} />
-                                                    </button>
-                                                )}
-
-                                                <button
-                                                    onClick={() => kickUser(peer.userId)}
-                                                    className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                    title="Kick User"
-                                                >
-                                                    <X size={14} />
-                                                </button>
                                             </div>
-                                        )}
+                                            <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900 ${participant.isOnline ? 'bg-green-500' : 'bg-gray-500'}`} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm flex items-center gap-2">
+                                                <span className={participant.isOnline ? 'text-white' : 'text-gray-500'}>
+                                                    {participant.name}
+                                                </span>
+                                                {isMe && <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">You</span>}
+                                                {!participant.isOnline && <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-gray-500 border border-white/5">Offline</span>}
+                                            </div>
+                                            {participant.isOnline ? (
+                                                <div className="flex gap-2 text-[10px] text-gray-400">
+                                                    <span>{isMe ? (isMicOn ? 'Mic On' : 'Mic Off') : 'Connected'}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="text-[10px] text-gray-600">Session record</div>
+                                            )}
+
+                                            {isAdmin && !isMe && participant.isOnline && (
+                                                <div className="flex gap-2 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                    {/* Mic Control */}
+                                                    {hardMutedUsers.includes(participant.userId) ? (
+                                                        <button
+                                                            onClick={() => adminUnmuteUser(participant.userId)}
+                                                            className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                            title="Unmute User"
+                                                        >
+                                                            <Check size={14} />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => adminMuteUser(participant.userId)}
+                                                            className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                            title="Mute User"
+                                                        >
+                                                            <MicOff size={14} />
+                                                        </button>
+                                                    )}
+
+                                                    {/* Video Control */}
+                                                    {hardVideoOffUsers.includes(participant.userId) ? (
+                                                        <button
+                                                            onClick={() => adminAllowVideo(participant.userId)}
+                                                            className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                            title="Allow Video"
+                                                        >
+                                                            <Video size={14} />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => adminStopVideo(participant.userId)}
+                                                            className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                            title="Disable Video"
+                                                        >
+                                                            <VideoOff size={14} />
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => kickUser(participant.userId)}
+                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Kick User"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </motion.div>
                 )}

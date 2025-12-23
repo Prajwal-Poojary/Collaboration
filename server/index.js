@@ -95,12 +95,17 @@ io.on('connection', (socket) => {
                 mutedUsers: new Set(),
                 videoOffUsers: new Set(),
                 kickedUsers: new Set(), // Restricted (needs approval)
-                blockedUsers: new Set() // Permanently banned
+                blockedUsers: new Set(), // Permanently banned
+                participants: {} // { userId: { name, isOnline } }
             };
             console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
         }
 
         const meeting = meetings[meetingId];
+
+        // Track participant
+        if (!meeting.participants) meeting.participants = {};
+        meeting.participants[userId] = { name, isOnline: true };
 
         // Check Restrictions
         if (meeting.blockedUsers && meeting.blockedUsers.has(userId)) {
@@ -122,6 +127,13 @@ io.on('connection', (socket) => {
 
         console.log(`User ${name} (${userId}) joined room ${meetingId}. Is Admin: ${isAdmin}`);
         socket.to(meetingId).emit('user-connected', { userId, name });
+
+        // Send full participants list to everyone in the room
+        io.to(meetingId).emit('participants-list', Object.entries(meeting.participants).map(([id, p]) => ({
+            userId: id,
+            name: p.name,
+            isOnline: p.isOnline
+        })));
     });
 
     socket.on('kick-user', ({ meetingId, targetUserId }) => {
@@ -328,6 +340,18 @@ io.on('connection', (socket) => {
         if (socket.meetingId && socket.userId) {
             console.log(`User ${socket.userId} left meeting ${socket.meetingId}`);
             socket.to(socket.meetingId).emit('user-disconnected', { userId: socket.userId });
+
+            const meeting = meetings[socket.meetingId];
+            if (meeting && meeting.participants[socket.userId]) {
+                meeting.participants[socket.userId].isOnline = false;
+
+                // Broadcast updated participants list
+                io.to(socket.meetingId).emit('participants-list', Object.entries(meeting.participants).map(([id, p]) => ({
+                    userId: id,
+                    name: p.name,
+                    isOnline: p.isOnline
+                })));
+            }
 
             // Clean up meeting if admin leaves? Or keep it specific logic?
             // For now, if everyone leaves, maybe clean up.
