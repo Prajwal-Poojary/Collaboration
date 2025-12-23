@@ -5,7 +5,7 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download } from 'lucide-react';
-import EmojiPicker, { Theme } from 'emoji-picker-react';
+import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 
 interface Peer {
     userId: string;
@@ -691,7 +691,7 @@ const MeetingRoom = () => {
                                 <div ref={emojiPickerRef} className="absolute bottom-full left-4 mb-2 z-50 shadow-2xl rounded-xl overflow-hidden">
                                     <EmojiPicker
                                         theme={Theme.DARK}
-                                        onEmojiClick={(emojiData) => {
+                                        onEmojiClick={(emojiData: EmojiClickData) => {
                                             setNewMessage(prev => prev + emojiData.emoji);
                                         }}
                                         width={320}
