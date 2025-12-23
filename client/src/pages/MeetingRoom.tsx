@@ -51,6 +51,7 @@ const MeetingRoom = () => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [showChat, setShowChat] = useState(false);
     const [newMessage, setNewMessage] = useState('');
+    const [showParticipants, setShowParticipants] = useState(false);
 
     const [isMicOn, setIsMicOn] = useState(true);
     const [isVideoOn, setIsVideoOn] = useState(true);
@@ -419,6 +420,58 @@ const MeetingRoom = () => {
                         </form>
                     </motion.div>
                 )}
+
+                {/* Participants Panel */}
+                {showParticipants && (
+                    <motion.div
+                        initial={{ x: "100%", opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: "100%", opacity: 0 }}
+                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                        className="w-80 glass-panel border-l border-white/10 flex flex-col absolute right-6 top-20 bottom-24 bg-black/40 backdrop-blur-xl z-30 overflow-hidden shadow-2xl"
+                    >
+                        <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                            <span className="font-display font-bold">Participants ({peers.length + 1})</span>
+                            <button onClick={() => setShowParticipants(false)} className="hover:bg-white/10 p-1 rounded-md transition-colors">
+                                <span className="sr-only">Close</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
+                            {/* Me */}
+                            <div className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/5">
+                                <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white">
+                                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                                </div>
+                                <div>
+                                    <div className="font-medium text-sm flex items-center gap-2">
+                                        {user?.name || 'You'}
+                                        <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">You</span>
+                                    </div>
+                                    <div className="flex gap-2 text-xs text-gray-400">
+                                        <span>{isMicOn ? 'Mic On' : 'Mic Off'}</span>
+                                        <span>•</span>
+                                        <span>{isVideoOn ? 'Video On' : 'Video Off'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Peers */}
+                            {peers.map(peer => (
+                                <div key={peer.userId} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white bg-gray-700`}>
+                                        {peer.name?.charAt(0).toUpperCase() || '?'}
+                                    </div>
+                                    <div>
+                                        <div className="font-medium text-sm">
+                                            {peer.name || 'Participant'}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
             </div>
 
             {/* Control Bar */}
@@ -436,14 +489,14 @@ const MeetingRoom = () => {
                         <Share size={22} />
                     </button>
 
-                    <button onClick={() => setShowChat(!showChat)} className={`p-4 rounded-full transition-all duration-300 relative ${showChat ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
+                    <button onClick={() => { setShowChat(!showChat); setShowParticipants(false); }} className={`p-4 rounded-full transition-all duration-300 relative ${showChat ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
                         <MessageSquare size={22} />
                         {messages.length > 0 && !showChat && (
                             <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-black" />
                         )}
                     </button>
 
-                    <button className="p-4 rounded-full bg-white/10 hover:bg-indigo-500 hover:text-white hover:shadow-lg hover:shadow-indigo-500/30 text-gray-300 transition-all duration-300">
+                    <button onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); }} className={`p-4 rounded-full transition-all duration-300 ${showParticipants ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
                         <Users size={22} />
                     </button>
 
