@@ -38,6 +38,8 @@ interface Participant {
     userId: string;
     name: string;
     isOnline: boolean;
+    totalDuration: number;
+    lastJoinTime?: number;
 }
 
 interface ChatMessage {
@@ -639,6 +641,27 @@ const MeetingRoom = () => {
         navigate('/dashboard');
     };
 
+    // Presence Timer Refresh
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTick(t => t + 1);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const formatDuration = (ms: number) => {
+        const seconds = Math.floor(ms / 1000);
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+
+        if (h > 0) {
+            return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
     const emojiPickerRef = useRef<HTMLDivElement>(null);
     const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -1144,13 +1167,25 @@ const MeetingRoom = () => {
                                                 {isMe && <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">You</span>}
                                                 {!participant.isOnline && <span className="text-[10px] bg-white/5 px-1.5 py-0.5 rounded text-gray-500 border border-white/5">Offline</span>}
                                             </div>
-                                            {participant.isOnline ? (
-                                                <div className="flex gap-2 text-[10px] text-gray-400">
-                                                    <span>{isMe ? (isMicOn ? 'Mic On' : 'Mic Off') : 'Connected'}</span>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-md border border-white/5">
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${participant.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                                                    <span className={`text-[10px] font-mono ${participant.isOnline ? 'text-green-400' : 'text-gray-500'}`}>
+                                                        {(() => {
+                                                            let total = participant.totalDuration;
+                                                            if (participant.isOnline && participant.lastJoinTime) {
+                                                                total += (Date.now() - participant.lastJoinTime);
+                                                            }
+                                                            return formatDuration(total);
+                                                        })()}
+                                                    </span>
                                                 </div>
-                                            ) : (
-                                                <div className="text-[10px] text-gray-600">Session record</div>
-                                            )}
+                                                {participant.isOnline ? (
+                                                    <span className="text-[10px] text-gray-500">{isMe ? (isMicOn ? 'Mic On' : 'Mic Off') : 'Connected'}</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-gray-600 italic">Session record</span>
+                                                )}
+                                            </div>
 
                                             {isAdmin && !isMe && participant.isOnline && (
                                                 <div className="flex gap-2 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">

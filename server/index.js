@@ -105,7 +105,19 @@ io.on('connection', (socket) => {
 
         // Track participant
         if (!meeting.participants) meeting.participants = {};
-        meeting.participants[userId] = { name, isOnline: true };
+
+        // Initialize or update existing participant
+        if (!meeting.participants[userId]) {
+            meeting.participants[userId] = {
+                name,
+                isOnline: true,
+                totalDuration: 0,
+                lastJoinTime: Date.now()
+            };
+        } else {
+            meeting.participants[userId].isOnline = true;
+            meeting.participants[userId].lastJoinTime = Date.now();
+        }
 
         // Check Restrictions
         if (meeting.blockedUsers && meeting.blockedUsers.has(userId)) {
@@ -132,7 +144,9 @@ io.on('connection', (socket) => {
         io.to(meetingId).emit('participants-list', Object.entries(meeting.participants).map(([id, p]) => ({
             userId: id,
             name: p.name,
-            isOnline: p.isOnline
+            isOnline: p.isOnline,
+            totalDuration: p.totalDuration,
+            lastJoinTime: p.lastJoinTime
         })));
     });
 
@@ -343,13 +357,22 @@ io.on('connection', (socket) => {
 
             const meeting = meetings[socket.meetingId];
             if (meeting && meeting.participants[socket.userId]) {
-                meeting.participants[socket.userId].isOnline = false;
+                const participant = meeting.participants[socket.userId];
+
+                // Calculate and add session duration
+                if (participant.isOnline && participant.lastJoinTime) {
+                    participant.totalDuration += (Date.now() - participant.lastJoinTime);
+                }
+
+                participant.isOnline = false;
 
                 // Broadcast updated participants list
                 io.to(socket.meetingId).emit('participants-list', Object.entries(meeting.participants).map(([id, p]) => ({
                     userId: id,
                     name: p.name,
-                    isOnline: p.isOnline
+                    isOnline: p.isOnline,
+                    totalDuration: p.totalDuration,
+                    lastJoinTime: p.lastJoinTime
                 })));
             }
 
