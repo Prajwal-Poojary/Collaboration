@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield } from 'lucide-react';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 
 interface Peer {
@@ -140,6 +140,73 @@ const MeetingRoom = () => {
 
                 newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
 
+                newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[] }) => {
+                    setIsAdmin(isAdmin);
+                    if (mutedUsers) {
+                        setHardMutedUsers(mutedUsers);
+                    }
+                    if (videoOffUsers) {
+                        setHardVideoOffUsers(videoOffUsers);
+                    }
+                });
+
+                newSocket.on('kicked', () => {
+                    alert('You have been kicked from the meeting.');
+                    navigate('/dashboard');
+                });
+
+                newSocket.on('user-hard-muted', ({ userId }: { userId: string }) => {
+                    setHardMutedUsers(prev => [...prev, userId]);
+                    if (user?._id === userId) {
+                        setIsMicOn(false);
+                        if (streamRef.current) {
+                            streamRef.current.getAudioTracks().forEach(track => {
+                                track.enabled = false;
+                            });
+                        }
+                        alert('You have been muted by the host.');
+                    }
+                });
+
+                newSocket.on('user-hard-unmuted', ({ userId }: { userId: string }) => {
+                    setHardMutedUsers(prev => prev.filter(id => id !== userId));
+                    if (user?._id === userId) {
+                        alert('The host has unmuted you. You can now use your microphone.');
+                    }
+                });
+
+                newSocket.on('user-hard-video-off', ({ userId }: { userId: string }) => {
+                    setHardVideoOffUsers(prev => [...prev, userId]);
+                    if (user?._id === userId) {
+                        setIsVideoOn(false);
+                        if (streamRef.current) {
+                            streamRef.current.getVideoTracks().forEach(track => {
+                                track.enabled = false;
+                            });
+                        }
+                        if (socket) {
+                            socket.emit('video-status-change', {
+                                meetingId,
+                                userId: user?._id,
+                                isVideoOn: false
+                            });
+                        }
+                        setVideoStatus(prev => ({ ...prev, [userId]: false }));
+                        alert('Your camera has been disabled by the host.');
+                    }
+                });
+
+                newSocket.on('user-hard-video-allow', ({ userId }: { userId: string }) => {
+                    setHardVideoOffUsers(prev => prev.filter(id => id !== userId));
+                    if (user?._id === userId) {
+                        alert('The host has allowed your camera. You can now turn it on.');
+                    }
+                });
+
+                newSocket.on('admin-muted', () => {
+                    // Legacy/Fallback
+                });
+
                 newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
                     console.log('User connected event received:', userId);
                     const peerConnection = createPeerConnection(userId, newSocket, name);
@@ -227,6 +294,13 @@ const MeetingRoom = () => {
     }, [meetingId, user?._id, user?.name]);
 
     const toggleMic = () => {
+        // Check if hard muted
+        const isHardMuted = user?._id && hardMutedUsers.includes(user._id);
+        if (isHardMuted) {
+            alert('You have been muted by the host and cannot unmute yourself.');
+            return;
+        }
+
         if (stream) {
             const audioTrack = stream.getAudioTracks()[0];
             if (audioTrack) {
@@ -237,6 +311,13 @@ const MeetingRoom = () => {
     };
 
     const toggleVideo = () => {
+        // Check if hard video off
+        const isHardVideoOff = user?._id && hardVideoOffUsers.includes(user._id);
+        if (isHardVideoOff) {
+            alert('Your camera has been disabled by the host and cannot be turned on.');
+            return;
+        }
+
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             if (videoTrack) {
@@ -482,6 +563,43 @@ const MeetingRoom = () => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [showEmojiPicker]);
+
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [hardMutedUsers, setHardMutedUsers] = useState<string[]>([]);
+    const [hardVideoOffUsers, setHardVideoOffUsers] = useState<string[]>([]);
+
+    // Admin Actions
+    const kickUser = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('kick-user', { meetingId, targetUserId });
+        }
+    };
+
+    const adminMuteUser = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('admin-mute-user', { meetingId, targetUserId });
+        }
+    };
+
+    const adminUnmuteUser = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('admin-unmute-user', { meetingId, targetUserId });
+        }
+    };
+
+    const adminStopVideo = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('admin-stop-video', { meetingId, targetUserId });
+        }
+    };
+
+    const adminAllowVideo = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('admin-allow-video', { meetingId, targetUserId });
+        }
+    };
+
+
 
     return (
         <div className="h-screen bg-black flex flex-col relative overflow-hidden text-white">
@@ -763,10 +881,15 @@ const MeetingRoom = () => {
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
                             {/* Me */}
                             <div className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/5">
-                                <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white">
+                                <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white relative">
                                     {user?.name?.charAt(0).toUpperCase() || 'U'}
+                                    {isAdmin && (
+                                        <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-0.5 border border-black" title="Host">
+                                            <Shield size={10} className="text-black fill-current" />
+                                        </div>
+                                    )}
                                 </div>
-                                <div>
+                                <div className="flex-1">
                                     <div className="font-medium text-sm flex items-center gap-2">
                                         {user?.name || 'You'}
                                         <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">You</span>
@@ -781,14 +904,63 @@ const MeetingRoom = () => {
 
                             {/* Peers */}
                             {peers.map(peer => (
-                                <div key={peer.userId} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
+                                <div key={peer.userId} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/5 group">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white bg-gray-700`}>
                                         {peer.name?.charAt(0).toUpperCase() || '?'}
                                     </div>
-                                    <div>
-                                        <div className="font-medium text-sm">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm truncate">
                                             {peer.name || 'Participant'}
                                         </div>
+                                        {isAdmin && (
+                                            <div className="flex gap-2 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                {/* Mic Control */}
+                                                {hardMutedUsers.includes(peer.userId) ? (
+                                                    <button
+                                                        onClick={() => adminUnmuteUser(peer.userId)}
+                                                        className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Unmute User"
+                                                    >
+                                                        <Check size={14} />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => adminMuteUser(peer.userId)}
+                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Mute User"
+                                                    >
+                                                        <MicOff size={14} />
+                                                    </button>
+                                                )}
+
+                                                {/* Video Control */}
+                                                {hardVideoOffUsers.includes(peer.userId) ? (
+                                                    <button
+                                                        onClick={() => adminAllowVideo(peer.userId)}
+                                                        className="p-1.5 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Allow Video"
+                                                    >
+                                                        <Video size={14} />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => adminStopVideo(peer.userId)}
+                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Disable Video"
+                                                    >
+                                                        <VideoOff size={14} />
+                                                    </button>
+                                                )}
+
+                                                <button
+                                                    onClick={() => kickUser(peer.userId)}
+                                                    className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                    title="Kick User"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}

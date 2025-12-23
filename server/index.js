@@ -74,23 +74,93 @@ const io = new Server(server, {
     maxHttpBufferSize: 1e8, // 100 MB to avoid disconnects on large files
 });
 
+const meetings = {}; // { meetingId: { adminId: string } }
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     socket.on('join-room', ({ meetingId, userId, name }) => {
         console.log('DEBUG JOIN-ROOM:', { meetingId, userId, name });
         socket.join(meetingId);
-        socket.join(userId); // Join a room with the user's ID for private messaging (signaling)
+        socket.join(userId);
 
-        // Store metadata for disconnect handling
+        // Store metadata
         socket.meetingId = meetingId;
         socket.userId = userId;
 
-        console.log(`User ${name} (${userId}) joined room ${meetingId} and personal room ${userId}`);
+        // Admin Assignment Logic
+        if (!meetings[meetingId]) {
+            meetings[meetingId] = { adminId: userId, mutedUsers: new Set(), videoOffUsers: new Set() };
+            console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
+        }
+
+        const meeting = meetings[meetingId];
+        const isAdmin = meeting.adminId === userId;
+        const mutedUsers = Array.from(meeting.mutedUsers || []);
+        const videoOffUsers = Array.from(meeting.videoOffUsers || []);
+        socket.emit('room-role', { isAdmin, mutedUsers, videoOffUsers });
+
+        console.log(`User ${name} (${userId}) joined room ${meetingId}. Is Admin: ${isAdmin}`);
         socket.to(meetingId).emit('user-connected', { userId, name });
     });
 
+    socket.on('kick-user', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} kicking ${targetUserId} from ${meetingId}`);
+            io.to(targetUserId).emit('kicked');
+            // Optimistically tell others they disconnected so UI updates faster
+            io.to(meetingId).emit('user-disconnected', { userId: targetUserId });
+        }
+    });
+
+    socket.on('admin-mute-user', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} hard muting ${targetUserId} in ${meetingId}`);
+            if (!meeting.mutedUsers) meeting.mutedUsers = new Set();
+            meeting.mutedUsers.add(targetUserId);
+
+            io.to(targetUserId).emit('admin-muted'); // Keeps mic off locally
+            io.to(meetingId).emit('user-hard-muted', { userId: targetUserId });
+        }
+    });
+
+    socket.on('admin-unmute-user', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} hard unmuting ${targetUserId} in ${meetingId}`);
+            if (meeting.mutedUsers) {
+                meeting.mutedUsers.delete(targetUserId);
+            }
+            io.to(meetingId).emit('user-hard-unmuted', { userId: targetUserId });
+        }
+    });
+
+    socket.on('admin-stop-video', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} hard stopping video for ${targetUserId} in ${meetingId}`);
+            if (!meeting.videoOffUsers) meeting.videoOffUsers = new Set();
+            meeting.videoOffUsers.add(targetUserId);
+
+            io.to(meetingId).emit('user-hard-video-off', { userId: targetUserId });
+        }
+    });
+
+    socket.on('admin-allow-video', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} allowing video for ${targetUserId} in ${meetingId}`);
+            if (meeting.videoOffUsers) {
+                meeting.videoOffUsers.delete(targetUserId);
+            }
+            io.to(meetingId).emit('user-hard-video-allow', { userId: targetUserId });
+        }
+    });
+
     socket.on('offer', (data) => {
+        // ... (existing logic)
         console.log(`Relaying OFFER from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('offer', {
             offer: data.offer,
@@ -100,6 +170,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('answer', (data) => {
+        // ... (existing logic)
         console.log(`Relaying ANSWER from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('answer', {
             answer: data.answer,
@@ -108,6 +179,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('ice-candidate', (data) => {
+        // ... (existing logic)
         console.log(`Relaying ICE CANDIDATE from ${data.sender} to ${data.target}`);
         socket.to(data.target).emit('ice-candidate', {
             candidate: data.candidate,
@@ -132,19 +204,9 @@ io.on('connection', (socket) => {
 
     socket.on('send-message', async ({ meetingId, text, file, senderId, senderName }) => {
         try {
-            const messageData = {
-                meetingId,
-                sender: senderId,
-                senderName,
-                text: text || '',
-            };
-
-            if (file) {
-                messageData.file = file;
-            }
-
+            const messageData = { meetingId, sender: senderId, senderName, text: text || '' };
+            if (file) messageData.file = file;
             const message = await Message.create(messageData);
-
             io.to(meetingId).emit('receive-message', {
                 text: message.text,
                 file: message.file,
@@ -161,6 +223,15 @@ io.on('connection', (socket) => {
         if (socket.meetingId && socket.userId) {
             console.log(`User ${socket.userId} left meeting ${socket.meetingId}`);
             socket.to(socket.meetingId).emit('user-disconnected', { userId: socket.userId });
+
+            // Clean up meeting if admin leaves? Or keep it specific logic?
+            // For now, if everyone leaves, maybe clean up.
+            // Simple cleanup: check room size.
+            const room = io.sockets.adapter.rooms.get(socket.meetingId);
+            if (!room || room.size === 0) {
+                delete meetings[socket.meetingId];
+                console.log(`Meeting ${socket.meetingId} ended and cleaned up.`);
+            }
         }
     });
 });
