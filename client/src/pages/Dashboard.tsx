@@ -101,14 +101,14 @@ const Dashboard = () => {
                                 <input
                                     type="text"
                                     placeholder="Enter meeting code"
-                                    className="input-field text-center font-display text-lg tracking-wider bg-black/40 focus:bg-black/60 border-white/5 focus:border-purple-500/50 h-14"
+                                    className="input-field text-center font-display text-lg tracking-wider bg-black/40 focus:bg-black/60 border-white/5 focus:border-purple-500/50 h-14 pr-32"
                                     value={meetingId}
                                     onChange={(e) => setMeetingId(e.target.value)}
                                 />
                                 <button
                                     type="submit"
                                     disabled={!meetingId}
-                                    className="absolute right-2 top-2 bottom-2 px-6 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="absolute right-2 top-2 bottom-2 px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
                                 >
                                     Join
                                 </button>

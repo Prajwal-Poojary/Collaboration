@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X } from 'lucide-react';
 
 interface Peer {
     userId: string;
@@ -52,6 +52,8 @@ const MeetingRoom = () => {
     const [showChat, setShowChat] = useState(false);
     const [newMessage, setNewMessage] = useState('');
     const [showParticipants, setShowParticipants] = useState(false);
+    const [showMeetingInfo, setShowMeetingInfo] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     const [isMicOn, setIsMicOn] = useState(true);
     const [isVideoOn, setIsVideoOn] = useState(true);
@@ -336,12 +338,59 @@ const MeetingRoom = () => {
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 p-6 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
                 <div className="flex items-center gap-3 pointer-events-auto">
-                    <div className="glass-panel px-4 py-2 flex items-center gap-2 rounded-full bg-white/5 border-white/10">
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="font-display font-medium tracking-wide text-sm">{meetingId}</span>
-                    </div>
+                    <button
+                        onClick={() => setShowMeetingInfo(true)}
+                        className="glass-panel px-4 py-2 flex items-center gap-2 rounded-full bg-white/5 border-white/10 hover:bg-white/10 transition-colors pointer-events-auto"
+                    >
+                        <Info size={18} className="text-gray-300" />
+                        <span className="font-display font-medium tracking-wide text-sm text-gray-300">Meeting Info</span>
+                    </button>
                 </div>
             </div>
+
+            {/* Meeting Info Modal */}
+            {showMeetingInfo && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl relative"
+                    >
+                        <button
+                            onClick={() => setShowMeetingInfo(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <h3 className="text-xl font-display font-bold text-white mb-2">Meeting Details</h3>
+                        <p className="text-gray-400 text-sm mb-6">Share the meeting code with others you want to invite.</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">Meeting Code</label>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 font-mono text-sm text-gray-200">
+                                        {meetingId}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(meetingId || '');
+                                            setCopied(true);
+                                            setTimeout(() => setCopied(false), 2000);
+                                        }}
+                                        className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-colors text-gray-300 hover:text-white"
+                                        title="Copy Code"
+                                    >
+                                        {copied ? <Check size={20} className="text-green-500" /> : <Copy size={20} />}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             <div className="flex flex-1 overflow-hidden relative z-10 p-6 pt-20 pb-24 gap-6">
                 <div className={`flex-1 transition-all duration-500 ease-in-out ${showChat ? 'w-2/3' : 'w-full'}`}>
