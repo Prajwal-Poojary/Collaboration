@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
+import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download } from 'lucide-react';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
 
 interface Peer {
     userId: string;
@@ -36,6 +38,18 @@ interface ChatMessage {
     text: string;
     senderName: string;
     timestamp: string;
+    file?: {
+        name: string;
+        data: string;
+        mimeType: string;
+        size: number;
+    };
+    // Client-side tracking fields
+    localId?: string;
+    isUploading?: boolean;
+    uploadProgress?: number;
+    isDownloading?: boolean;
+    downloadProgress?: number;
 }
 
 const MeetingRoom = () => {
@@ -53,6 +67,7 @@ const MeetingRoom = () => {
     const [newMessage, setNewMessage] = useState('');
     const [showParticipants, setShowParticipants] = useState(false);
     const [showMeetingInfo, setShowMeetingInfo] = useState(false);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [copied, setCopied] = useState(false);
 
     const [isMicOn, setIsMicOn] = useState(true);
@@ -326,9 +341,147 @@ const MeetingRoom = () => {
             .catch(err => console.error("Failed to share screen:", err));
     };
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && socket) {
+            // Create a temporary local message for progress tracking
+            const tempId = Date.now().toString();
+            const tempMessage: ChatMessage = {
+                text: '',
+                senderName: user?.name || 'You',
+                timestamp: new Date().toISOString(),
+                file: {
+                    name: file.name,
+                    data: '', // Will be filled with URL after upload
+                    mimeType: file.type,
+                    size: file.size
+                },
+                localId: tempId,
+                isUploading: true,
+                uploadProgress: 0
+            };
+
+            setMessages(prev => [...prev, tempMessage]);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await axios.post('http://localhost:5000/api/upload', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    onUploadProgress: (progressEvent) => {
+                        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
+                        setMessages(prev => prev.map(msg =>
+                            msg.localId === tempId ? { ...msg, uploadProgress: percentCompleted } : msg
+                        ));
+                    }
+                });
+
+                const { url } = response.data;
+
+                // Send message via socket
+                socket.emit('send-message', {
+                    meetingId,
+                    text: '',
+                    file: {
+                        name: file.name,
+                        data: url, // Store URL in data field
+                        mimeType: file.type,
+                        size: file.size
+                    },
+                    senderId: user?._id,
+                    senderName: user?.name
+                });
+
+                // Remove temp message (it will be replaced by the socket broadcast)
+                // Or better, update it to finished state. 
+                // Since socket broadcast appends, we should remove the temp one to avoid duplicates if possible.
+                // But socket broadcast comes with server timestamp.
+                // Let's filter out the temp message once the real one arrives? 
+                // Simpler: Just remove the temp message from state now (or let user see completion for a split second)
+                // Actually, let's just mark isUploading false and let the socket duplicate it? No, duplicates are bad.
+                // We'll remove the temp message in the catch/finally or rely on socket to append "real" one.
+                // To avoid flash, we could match by some ID, but server creates ID.
+                // Let's just remove it for now.
+                setMessages(prev => prev.filter(msg => msg.localId !== tempId));
+
+            } catch (error) {
+                console.error("Upload failed", error);
+                // Ideally show error state
+                setMessages(prev => prev.filter(msg => msg.localId !== tempId));
+                alert("File upload failed");
+            }
+        }
+        if (e.target) e.target.value = '';
+    };
+
+    const handleDownload = async (fileUrl: string, fileName: string, index: number) => {
+        setMessages(prev => prev.map((msg, i) =>
+            i === index ? { ...msg, isDownloading: true, downloadProgress: 0 } : msg
+        ));
+
+        try {
+            const response = await axios.get(fileUrl, {
+                responseType: 'blob',
+                onDownloadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 0));
+                    setMessages(prev => prev.map((msg, i) =>
+                        i === index ? { ...msg, downloadProgress: percentCompleted } : msg
+                    ));
+                }
+            });
+
+            // Create download link
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            // Cleanup
+            setTimeout(() => {
+                setMessages(prev => prev.map((msg, i) =>
+                    i === index ? { ...msg, isDownloading: false, downloadProgress: 0 } : msg
+                ));
+            }, 1000); // Keep 100% visible for a second
+
+        } catch (error) {
+            console.error("Download failed", error);
+            alert("Download failed");
+            setMessages(prev => prev.map((msg, i) =>
+                i === index ? { ...msg, isDownloading: false } : msg
+            ));
+        }
+    };
+
+
     const leaveMeeting = () => {
         navigate('/dashboard');
     };
+
+    const emojiPickerRef = useRef<HTMLDivElement>(null);
+    const emojiButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (showEmojiPicker &&
+                emojiPickerRef.current &&
+                !emojiPickerRef.current.contains(event.target as Node) &&
+                emojiButtonRef.current &&
+                !emojiButtonRef.current.contains(event.target as Node)) {
+                setShowEmojiPicker(false);
+            }
+        }
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showEmojiPicker]);
 
     return (
         <div className="h-screen bg-black flex flex-col relative overflow-hidden text-white">
@@ -486,34 +639,106 @@ const MeetingRoom = () => {
                             </button>
                         </div>
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
-                            {messages.map((msg, idx) => (
-                                <div key={idx} className="flex flex-col gap-1 anim-fade-in">
+                            {messages.map((msg, index) => (
+                                <div key={index} className="flex flex-col gap-1 anim-fade-in">
                                     <div className="flex items-baseline justify-between gap-2">
                                         <span className="text-xs font-bold text-indigo-400">{msg.senderName}</span>
                                         <span className="text-[10px] text-gray-500">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
-                                    <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed text-gray-200">
-                                        {msg.text}
+                                    <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed text-gray-200 min-w-[200px]">
+                                        {msg.file && msg.file.data ? (
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/10 group/file">
+                                                    <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                                                        <FileText size={24} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="font-medium text-white truncate max-w-[150px]">{msg.file.name}</div>
+                                                        <div className="text-xs text-gray-400">{(msg.file.size / 1024).toFixed(1)} KB</div>
+                                                    </div>
+                                                    {msg.isUploading ? (
+                                                        <div className="text-xs text-indigo-400 font-medium">{msg.uploadProgress}%</div>
+                                                    ) : msg.isDownloading ? (
+                                                        <div className="text-xs text-green-400 font-medium">{msg.downloadProgress}%</div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleDownload(msg.file!.data, msg.file!.name, index)}
+                                                            className="p-2 bg-white/10 rounded-lg hover:bg-white/20 text-gray-400 hover:text-white transition-colors"
+                                                            title="Download"
+                                                        >
+                                                            <Download size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                {(msg.isUploading || msg.isDownloading) && (
+                                                    <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full transition-all duration-200 ${msg.isUploading ? 'bg-indigo-500' : 'bg-green-500'}`}
+                                                            style={{ width: `${msg.isUploading ? msg.uploadProgress : msg.downloadProgress}%` }}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            msg.text
+                                        )}
                                     </div>
                                 </div>
                             ))}
                         </div>
-                        <form onSubmit={sendMessage} className="p-4 border-t border-white/10 bg-white/5">
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    placeholder="Type a message..."
-                                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 pr-10 text-white focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
-                                />
+                        <form onSubmit={sendMessage} className="p-4 border-t border-white/10 bg-white/5 relative">
+                            {showEmojiPicker && (
+                                <div ref={emojiPickerRef} className="absolute bottom-full left-4 mb-2 z-50 shadow-2xl rounded-xl overflow-hidden">
+                                    <EmojiPicker
+                                        theme={Theme.DARK}
+                                        onEmojiClick={(emojiData) => {
+                                            setNewMessage(prev => prev + emojiData.emoji);
+                                        }}
+                                        width={320}
+                                        height={400}
+                                        previewConfig={{ showPreview: false }}
+                                    />
+                                </div>
+                            )}
+                            <div className="relative flex items-center gap-2">
                                 <button
-                                    type="submit"
-                                    disabled={!newMessage.trim()}
-                                    className="absolute right-2 top-2 p-1.5 bg-indigo-500 rounded-lg text-white hover:bg-indigo-600 disabled:opacity-50 disabled:hover:bg-indigo-500 transition-colors"
+                                    ref={emojiButtonRef}
+                                    type="button"
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                    className={`p-3 rounded-xl transition-colors ${showEmojiPicker ? 'bg-indigo-500/20 text-indigo-400' : 'bg-black/20 hover:bg-white/10 text-gray-400 hover:text-white'} border border-white/10`}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
+                                    <Smile size={20} />
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="p-3 bg-black/20 border border-white/10 rounded-xl hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                                    title="Attach File"
+                                >
+                                    <Paperclip size={20} />
+                                </button>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
+                                <div className="relative flex-1">
+                                    <input
+                                        type="text"
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        placeholder="Type a message..."
+                                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 pr-10 text-white focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!newMessage.trim()}
+                                        className="absolute right-2 top-2 p-1.5 bg-indigo-500 rounded-lg text-white hover:bg-indigo-600 disabled:opacity-50 disabled:hover:bg-indigo-500 transition-colors"
+                                    >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </motion.div>

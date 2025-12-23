@@ -13,7 +13,13 @@ const messageSchema = new mongoose.Schema({
     senderName: String,
     text: {
         type: String,
-        required: true,
+        required: false, // Text is optional if sending a file
+    },
+    file: {
+        name: String,
+        data: String, // Base64 encoded data
+        mimeType: String, // MIME type
+        size: Number,
     },
 }, {
     timestamps: true,

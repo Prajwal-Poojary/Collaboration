@@ -20,9 +20,46 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
+const multer = require('multer');
+const path = require('path');
+
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/ai', aiRoutes);
+
+// Configure Multer for file uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ storage: storage });
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// File Upload Route
+app.post('/api/upload', upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No file uploaded.');
+    }
+
+    // Construct public URL. Assuming server runs on same host/port 
+    // In production, use process.env.BASE_URL
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.json({
+        url: fileUrl,
+        name: req.file.originalname,
+        size: req.file.size,
+        mimeType: req.file.mimetype
+    });
+});
 
 
 app.get('/', (req, res) => {
@@ -34,6 +71,7 @@ const io = new Server(server, {
         origin: '*',
         methods: ['GET', 'POST'],
     },
+    maxHttpBufferSize: 1e8, // 100 MB to avoid disconnects on large files
 });
 
 io.on('connection', (socket) => {
@@ -92,17 +130,25 @@ io.on('connection', (socket) => {
         socket.to(meetingId).emit('user-video-status', { userId, isVideoOn });
     });
 
-    socket.on('send-message', async ({ meetingId, text, senderId, senderName }) => {
+    socket.on('send-message', async ({ meetingId, text, file, senderId, senderName }) => {
         try {
-            const message = await Message.create({
+            const messageData = {
                 meetingId,
                 sender: senderId,
                 senderName,
-                text,
-            });
+                text: text || '',
+            };
+
+            if (file) {
+                messageData.file = file;
+            }
+
+            const message = await Message.create(messageData);
+
             io.to(meetingId).emit('receive-message', {
-                text,
-                senderName,
+                text: message.text,
+                file: message.file,
+                senderName: message.senderName,
                 timestamp: message.createdAt,
             });
         } catch (error) {
