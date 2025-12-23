@@ -79,6 +79,10 @@ const MeetingRoom = () => {
     const [screenSharingId, setScreenSharingId] = useState<string | null>(null);
     const [videoStatus, setVideoStatus] = useState<{ [key: string]: boolean }>({});
 
+    // Restricted Entry State
+    const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
+    const [entryRequests, setEntryRequests] = useState<{ userId: string; name: string }[]>([]);
+
     // Keep streamRef synced with state
     useEffect(() => {
         streamRef.current = stream;
@@ -201,6 +205,27 @@ const MeetingRoom = () => {
                     if (user?._id === userId) {
                         alert('The host has allowed your camera. You can now turn it on.');
                     }
+                });
+
+                // --- RESTRICTED ENTRY LISTENERS ---
+                newSocket.on('entry-pending', () => {
+                    setIsWaitingForApproval(true);
+                });
+
+                newSocket.on('entry-denied', ({ reason }: { reason: string }) => {
+                    alert(reason || 'Access denied.');
+                    navigate('/dashboard');
+                });
+
+                newSocket.on('entry-approved', () => {
+                    setIsWaitingForApproval(false);
+                    // Re-attempt join logic now that we are approved
+                    newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
+                });
+
+                newSocket.on('entry-request', (request: { userId: string; name: string }) => {
+                    setEntryRequests(prev => [...prev, request]);
+                    // Optional: Play a sound
                 });
 
                 newSocket.on('admin-muted', () => {
@@ -601,8 +626,79 @@ const MeetingRoom = () => {
 
 
 
+    const handleEntryResponse = (targetUserId: string, approved: boolean) => {
+        if (socket) {
+            socket.emit('admin-response-entry', { meetingId, targetUserId, approved });
+            setEntryRequests(prev => prev.filter(req => req.userId !== targetUserId));
+        }
+    };
+
+    if (isWaitingForApproval) {
+        return (
+            <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-6">
+                <div className="p-4 bg-yellow-500/20 rounded-full animate-pulse">
+                    <Shield size={64} className="text-yellow-500" />
+                </div>
+                <h2 className="text-3xl font-bold">Waiting for Host Approval</h2>
+                <p className="text-gray-400 max-w-md text-center">
+                    You were previously removed from this meeting. The host has been notified of your request to rejoin.
+                </p>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-75" />
+                    <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-150" />
+                </div>
+                <button
+                    onClick={() => navigate('/dashboard')}
+                    className="mt-8 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                    Cancel Request
+                </button>
+            </div>
+        );
+    }
+
     return (
-        <div className="h-screen bg-black flex flex-col relative overflow-hidden text-white">
+        <div className="flex h-screen w-screen bg-slate-950 text-white overflow-hidden relative selection:bg-indigo-500/30">
+            {/* Admin Entry Requests Panel */}
+            {isAdmin && entryRequests.length > 0 && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-md">
+                    {entryRequests.map((req) => (
+                        <motion.div
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            key={req.userId}
+                            className="bg-slate-900/90 backdrop-blur-md border border-indigo-500/30 p-4 rounded-xl shadow-2xl flex items-center justify-between"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-500/20 rounded-full text-indigo-400">
+                                    <Shield size={20} />
+                                </div>
+                                <div>
+                                    <p className="font-bold">{req.name}</p>
+                                    <p className="text-xs text-gray-400">Requesting to rejoin</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleEntryResponse(req.userId, false)}
+                                    className="p-2 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg transition-colors"
+                                    title="Block Permanently"
+                                >
+                                    <X size={18} />
+                                </button>
+                                <button
+                                    onClick={() => handleEntryResponse(req.userId, true)}
+                                    className="p-2 bg-green-500/20 hover:bg-green-500/40 text-green-400 rounded-lg transition-colors"
+                                    title="Allow Entry"
+                                >
+                                    <Check size={18} />
+                                </button>
+                            </div>
+                        </motion.div>
+                    ))}
+                </div>
+            )}
             {/* Ambient Background */}
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-black to-black z-0 pointer-events-none" />
 

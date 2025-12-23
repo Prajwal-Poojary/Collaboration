@@ -90,11 +90,31 @@ io.on('connection', (socket) => {
 
         // Admin Assignment Logic
         if (!meetings[meetingId]) {
-            meetings[meetingId] = { adminId: userId, mutedUsers: new Set(), videoOffUsers: new Set() };
+            meetings[meetingId] = {
+                adminId: userId,
+                mutedUsers: new Set(),
+                videoOffUsers: new Set(),
+                kickedUsers: new Set(), // Restricted (needs approval)
+                blockedUsers: new Set() // Permanently banned
+            };
             console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
         }
 
         const meeting = meetings[meetingId];
+
+        // Check Restrictions
+        if (meeting.blockedUsers && meeting.blockedUsers.has(userId)) {
+            socket.emit('entry-denied', { reason: 'Host has blocked you from this meeting.' });
+            return;
+        }
+
+        if (meeting.kickedUsers && meeting.kickedUsers.has(userId)) {
+            socket.emit('entry-pending');
+            // Notify Admin
+            io.to(meeting.adminId).emit('entry-request', { userId, name });
+            return;
+        }
+
         const isAdmin = meeting.adminId === userId;
         const mutedUsers = Array.from(meeting.mutedUsers || []);
         const videoOffUsers = Array.from(meeting.videoOffUsers || []);
@@ -108,6 +128,11 @@ io.on('connection', (socket) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
             console.log(`Admin ${socket.userId} kicking ${targetUserId} from ${meetingId}`);
+
+            // Add to Restricted list (needs approval to rejoin)
+            if (!meeting.kickedUsers) meeting.kickedUsers = new Set();
+            meeting.kickedUsers.add(targetUserId);
+
             io.to(targetUserId).emit('kicked');
             // Optimistically tell others they disconnected so UI updates faster
             io.to(meetingId).emit('user-disconnected', { userId: targetUserId });
@@ -156,6 +181,23 @@ io.on('connection', (socket) => {
                 meeting.videoOffUsers.delete(targetUserId);
             }
             io.to(meetingId).emit('user-hard-video-allow', { userId: targetUserId });
+        }
+    });
+
+    socket.on('admin-response-entry', ({ meetingId, targetUserId, approved }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            if (approved) {
+                console.log(`Admin APPROVED re-entry for ${targetUserId}`);
+                if (meeting.kickedUsers) meeting.kickedUsers.delete(targetUserId);
+                io.to(targetUserId).emit('entry-approved');
+            } else {
+                console.log(`Admin DENIED re-entry for ${targetUserId}`);
+                if (meeting.kickedUsers) meeting.kickedUsers.delete(targetUserId);
+                if (!meeting.blockedUsers) meeting.blockedUsers = new Set();
+                meeting.blockedUsers.add(targetUserId);
+                io.to(targetUserId).emit('entry-denied', { reason: 'Host denied your request to join.' });
+            }
         }
     });
 
