@@ -43,6 +43,11 @@ io.on('connection', (socket) => {
         console.log('DEBUG JOIN-ROOM:', { meetingId, userId, name });
         socket.join(meetingId);
         socket.join(userId); // Join a room with the user's ID for private messaging (signaling)
+
+        // Store metadata for disconnect handling
+        socket.meetingId = meetingId;
+        socket.userId = userId;
+
         console.log(`User ${name} (${userId}) joined room ${meetingId} and personal room ${userId}`);
         socket.to(meetingId).emit('user-connected', { userId, name });
     });
@@ -107,6 +112,10 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
+        if (socket.meetingId && socket.userId) {
+            console.log(`User ${socket.userId} left meeting ${socket.meetingId}`);
+            socket.to(socket.meetingId).emit('user-disconnected', { userId: socket.userId });
+        }
     });
 });
 

@@ -58,18 +58,20 @@ const MeetingRoom = () => {
 
     const myVideoRef = useRef<HTMLVideoElement>(null);
     const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
+    const streamRef = useRef<MediaStream | null>(null);
     const [screenSharingId, setScreenSharingId] = useState<string | null>(null);
     const [videoStatus, setVideoStatus] = useState<{ [key: string]: boolean }>({});
 
-    // Helper to keep ref in sync for existing logic if needed, though we will use VideoDisplay mostly
+    // Keep streamRef synced with state
     useEffect(() => {
+        streamRef.current = stream;
         if (myVideoRef.current && stream) {
             myVideoRef.current.srcObject = stream;
         }
     }, [stream]);
 
-    const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string, streamToUse?: MediaStream) => {
-        console.log(`Creating PeerConnection for ${targetUserId} with stream:`, !!streamToUse);
+    const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string) => {
+        console.log(`Creating PeerConnection for ${targetUserId}`);
         const peerConnection = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -79,7 +81,6 @@ const MeetingRoom = () => {
 
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log('Sending ICE candidate to', targetUserId);
                 socketToUse.emit('ice-candidate', {
                     target: targetUserId,
                     candidate: event.candidate,
@@ -98,8 +99,13 @@ const MeetingRoom = () => {
             });
         };
 
-        if (streamToUse) {
-            streamToUse.getTracks().forEach(track => peerConnection.addTrack(track, streamToUse));
+        // Add local tracks - ALWAYS use the current stream from ref
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => {
+                if (streamRef.current) {
+                    peerConnection.addTrack(track, streamRef.current);
+                }
+            });
         }
 
         peersRef.current[targetUserId] = peerConnection;
@@ -111,20 +117,16 @@ const MeetingRoom = () => {
         setSocket(newSocket);
 
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then((currentStream) => {
-                setStream(currentStream);
-                if (myVideoRef.current) {
-                    myVideoRef.current.srcObject = currentStream;
-                }
+            .then((initialStream) => {
+                setStream(initialStream);
+                // We don't need to set srcObject here because the partial useEffect above handles it when stream state updates
 
                 newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
 
                 newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
                     console.log('User connected event received:', userId);
-                    // Pass newSocket and currentStream explicitly
-                    const peerConnection = createPeerConnection(userId, newSocket, name, currentStream);
+                    const peerConnection = createPeerConnection(userId, newSocket, name);
                     peerConnection.createOffer().then(offer => {
-                        console.log('Created Offer for', userId);
                         peerConnection.setLocalDescription(offer);
                         newSocket.emit('offer', {
                             target: userId,
@@ -132,14 +134,12 @@ const MeetingRoom = () => {
                             sender: user?._id,
                             name: user?.name
                         });
-                        console.log('Sent Offer to', userId);
                     }).catch(err => console.error('Error creating offer:', err));
                 });
 
                 newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
                     console.log('Received Offer from', sender);
-                    // Pass newSocket and currentStream explicitly
-                    const peerConnection = createPeerConnection(sender, newSocket, name, currentStream);
+                    const peerConnection = createPeerConnection(sender, newSocket, name);
                     await peerConnection.setRemoteDescription(offer);
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
@@ -148,7 +148,6 @@ const MeetingRoom = () => {
                         answer: answer,
                         sender: user?._id
                     });
-                    console.log('Sent Answer to', sender);
                 });
 
                 newSocket.on('answer', async ({ answer, sender }: AnswerPayload) => {
@@ -179,6 +178,20 @@ const MeetingRoom = () => {
                     setScreenSharingId(null);
                 });
 
+                newSocket.on('user-disconnected', ({ userId }: { userId: string }) => {
+                    console.log('User disconnected:', userId);
+                    if (peersRef.current[userId]) {
+                        peersRef.current[userId].close();
+                        delete peersRef.current[userId];
+                    }
+                    setPeers(prev => prev.filter(p => p.userId !== userId));
+                    setVideoStatus(prev => {
+                        const newStatus = { ...prev };
+                        delete newStatus[userId];
+                        return newStatus;
+                    });
+                });
+
                 newSocket.on('user-video-status', ({ userId, isVideoOn }: { userId: string, isVideoOn: boolean }) => {
                     setVideoStatus(prev => ({ ...prev, [userId]: isVideoOn }));
                 });
@@ -188,12 +201,13 @@ const MeetingRoom = () => {
 
         return () => {
             newSocket.disconnect();
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
             }
             Object.values(peersRef.current).forEach(pc => pc.close());
         };
-    }, [meetingId, user]);
+        // Use user._id and user.name for stability instead of the whole user object
+    }, [meetingId, user?._id, user?.name]);
 
     const toggleMic = () => {
         if (stream) {
@@ -209,17 +223,20 @@ const MeetingRoom = () => {
         if (stream) {
             const videoTrack = stream.getVideoTracks()[0];
             if (videoTrack) {
-                videoTrack.enabled = !isVideoOn;
-                setIsVideoOn(!isVideoOn);
+                const newStatus = !isVideoOn;
+                videoTrack.enabled = newStatus;
+                setIsVideoOn(newStatus);
                 // Update local status map immediately for UI consistency
                 if (user?._id) {
-                    setVideoStatus(prev => ({ ...prev, [user._id]: !isVideoOn }));
+                    setVideoStatus(prev => ({ ...prev, [user._id]: newStatus }));
                 }
-                socket.emit('video-status-change', {
-                    meetingId,
-                    userId: user?._id,
-                    isVideoOn: !isVideoOn
-                });
+                if (socket) {
+                    socket.emit('video-status-change', {
+                        meetingId,
+                        userId: user?._id,
+                        isVideoOn: newStatus
+                    });
+                }
             }
         }
     };
@@ -246,10 +263,13 @@ const MeetingRoom = () => {
                     const videoTrack = stream.getVideoTracks()[0];
                     stream.removeTrack(videoTrack);
                     stream.addTrack(screenTrack);
-                    setStream(new MediaStream([screenTrack, ...stream.getAudioTracks()]));
+                    const newStream = new MediaStream([screenTrack, ...stream.getAudioTracks()]);
+                    setStream(newStream);
 
                     // Notify server
-                    socket.emit('start-screen-share', { meetingId, userId: user?._id });
+                    if (socket) {
+                        socket.emit('start-screen-share', { meetingId, userId: user?._id });
+                    }
                     setScreenSharingId(user?._id || null);
 
                     // Replace track for all peers
@@ -262,23 +282,41 @@ const MeetingRoom = () => {
 
                     screenTrack.onended = () => {
                         // Notify server
-                        socket.emit('stop-screen-share', { meetingId, userId: user?._id });
+                        if (socket) {
+                            socket.emit('stop-screen-share', { meetingId, userId: user?._id });
+                        }
                         setScreenSharingId(null);
 
                         // Revert to camera
                         navigator.mediaDevices.getUserMedia({ video: true })
                             .then(camStream => {
                                 const camTrack = camStream.getVideoTracks()[0];
-                                stream.removeTrack(screenTrack);
-                                stream.addTrack(camTrack);
-                                setStream(new MediaStream([camTrack, ...stream.getAudioTracks()]));
+                                const currentStream = streamRef.current;
+                                if (currentStream) {
+                                    currentStream.removeTrack(screenTrack);
+                                    currentStream.addTrack(camTrack);
+                                    const revertedStream = new MediaStream([camTrack, ...currentStream.getAudioTracks()]);
+                                    setStream(revertedStream);
 
-                                Object.values(peersRef.current).forEach(pc => {
-                                    const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                                    if (sender) {
-                                        sender.replaceTrack(camTrack);
-                                    }
-                                });
+                                    // Ensure audio state is preserved if it was muted
+                                    revertedStream.getAudioTracks().forEach(track => {
+                                        track.enabled = isMicOn;
+                                    });
+                                    // Ensure video state is preserved if it was off (though usually we want it on after stop share?)
+                                    // Actually usually stop share -> camera on specificly.
+                                    // But let's respect isVideoOn state if possible, or force it true?
+                                    // Typically returning from share implies we want video back.
+                                    // `camStream` comes with enabled tracks.
+                                    // Let's ensure we match `isVideoOn`
+                                    camTrack.enabled = isVideoOn;
+
+                                    Object.values(peersRef.current).forEach(pc => {
+                                        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                                        if (sender) {
+                                            sender.replaceTrack(camTrack);
+                                        }
+                                    });
+                                }
                             });
                     };
                 }
@@ -318,6 +356,7 @@ const MeetingRoom = () => {
                                         isLocal={true}
                                         isMirrored={false}
                                         isVideoOn={videoStatus[user?._id] ?? isVideoOn}
+                                        isMicOn={isMicOn}
                                     />
                                 ) : (
                                     (() => {
@@ -335,13 +374,16 @@ const MeetingRoom = () => {
                             <div className="w-1/4 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
                                 {screenSharingId !== user?._id && (
                                     <div className="h-48 flex-shrink-0">
-                                        <VideoDisplay
-                                            stream={stream}
-                                            name={`You (${user?.name})`}
-                                            isLocal={true}
-                                            isMirrored={true}
-                                            isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
-                                        />
+                                        <div className="h-48 flex-shrink-0">
+                                            <VideoDisplay
+                                                stream={stream}
+                                                name={`You (${user?.name})`}
+                                                isLocal={true}
+                                                isMirrored={true}
+                                                isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
+                                                isMicOn={isMicOn}
+                                            />
+                                        </div>
                                     </div>
                                 )}
                                 {peers.filter(p => p.userId !== screenSharingId).map(peer => (
@@ -362,7 +404,14 @@ const MeetingRoom = () => {
                                 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                             }`}>
 
-                            <VideoDisplay stream={stream} name={`You (${user?.name})`} isLocal={true} isMirrored={true} isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn} />
+                            <VideoDisplay
+                                stream={stream}
+                                name={`You (${user?.name})`}
+                                isLocal={true}
+                                isMirrored={true}
+                                isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
+                                isMicOn={isMicOn}
+                            />
 
                             {peers.map((peer) => (
                                 <VideoDisplay key={peer.userId} stream={peer.stream} name={peer.name} isVideoOn={videoStatus[peer.userId] ?? true} />
@@ -521,7 +570,7 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
         if (videoRef.current && stream) {
             videoRef.current.srcObject = stream;
         }
-    }, [stream]);
+    }, [stream, isVideoOn]);
 
     // Generate random color from name
     const getInitials = (name?: string) => name ? name.charAt(0).toUpperCase() : '?';
