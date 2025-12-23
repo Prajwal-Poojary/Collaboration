@@ -69,6 +69,12 @@ const MeetingRoom = () => {
     const [showMeetingInfo, setShowMeetingInfo] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+    const showToast = (message: string) => {
+        setToastMessage(message);
+        setTimeout(() => setToastMessage(null), 3000);
+    };
 
     const [isMicOn, setIsMicOn] = useState(true);
     const [isVideoOn, setIsVideoOn] = useState(true);
@@ -230,6 +236,58 @@ const MeetingRoom = () => {
 
                 newSocket.on('admin-muted', () => {
                     // Legacy/Fallback
+                });
+
+                // --- GLOBAL UPDATES (Mute All / Video All) ---
+                newSocket.on('all-users-hard-muted', ({ mutedUsers }: { mutedUsers: string[] }) => {
+                    setHardMutedUsers(mutedUsers); // Sync list
+                    // If I am in the list (which I should be if not admin), mute me
+                    if (mutedUsers.includes(user?._id || '')) {
+                        setIsMicOn(false);
+                        if (streamRef.current) {
+                            streamRef.current.getAudioTracks().forEach(track => {
+                                track.enabled = false;
+                            });
+                        }
+                        alert('Host has muted everyone.');
+                    } else if (isAdmin) {
+                        showToast("Everyone has been muted.");
+                    }
+                });
+
+                newSocket.on('all-users-hard-unmuted', () => {
+                    setHardMutedUsers([]);
+                    if (!isAdmin) alert('Host has unmuted everyone. You can now use your microphone.');
+                    if (isAdmin) showToast("Everyone has been unmuted.");
+                });
+
+                newSocket.on('all-users-hard-video-off', ({ videoOffUsers }: { videoOffUsers: string[] }) => {
+                    setHardVideoOffUsers(videoOffUsers);
+                    if (videoOffUsers.includes(user?._id || '')) {
+                        setIsVideoOn(false);
+                        if (streamRef.current) {
+                            streamRef.current.getVideoTracks().forEach(track => {
+                                track.enabled = false;
+                            });
+                        }
+                        if (socket) {
+                            socket.emit('video-status-change', {
+                                meetingId,
+                                userId: user?._id,
+                                isVideoOn: false
+                            });
+                        }
+                        setVideoStatus(prev => ({ ...prev, [user?._id || '']: false }));
+                        alert('Host has disabled everyone\'s camera.');
+                    } else if (isAdmin) {
+                        showToast("Everyone's camera has been disabled.");
+                    }
+                });
+
+                newSocket.on('all-users-hard-video-allow', () => {
+                    setHardVideoOffUsers([]);
+                    if (!isAdmin) alert('Host has allowed everyone\'s camera.');
+                    if (isAdmin) showToast("Everyone's camera access enabled.");
                 });
 
                 newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
@@ -660,6 +718,21 @@ const MeetingRoom = () => {
 
     return (
         <div className="flex h-screen w-screen bg-slate-950 text-white overflow-hidden relative selection:bg-indigo-500/30">
+            {/* Toast Notification */}
+            {toastMessage && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60]">
+                    <motion.div
+                        initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="bg-zinc-800/90 backdrop-blur-md text-white px-6 py-3 rounded-full shadow-2xl border border-white/10 flex items-center gap-3"
+                    >
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                        <span className="font-medium text-sm tracking-wide">{toastMessage}</span>
+                    </motion.div>
+                </div>
+            )}
+
             {/* Admin Entry Requests Panel */}
             {isAdmin && entryRequests.length > 0 && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-md">
@@ -967,12 +1040,71 @@ const MeetingRoom = () => {
                         transition={{ type: "spring", damping: 25, stiffness: 200 }}
                         className="w-80 glass-panel border-l border-white/10 flex flex-col absolute right-6 top-20 bottom-24 bg-black/40 backdrop-blur-xl z-30 overflow-hidden shadow-2xl"
                     >
-                        <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
-                            <span className="font-display font-bold">Participants ({peers.length + 1})</span>
-                            <button onClick={() => setShowParticipants(false)} className="hover:bg-white/10 p-1 rounded-md transition-colors">
-                                <span className="sr-only">Close</span>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                            </button>
+                        <div className="p-4 border-b border-white/10 bg-white/5 flex flex-col gap-3">
+                            <div className="flex justify-between items-center">
+                                <span className="font-display font-bold">Participants ({peers.length + 1})</span>
+                                <button onClick={() => setShowParticipants(false)} className="hover:bg-white/10 p-1 rounded-md transition-colors">
+                                    <span className="sr-only">Close</span>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                </button>
+                            </div>
+
+                            {/* Global Admin Controls */}
+                            {isAdmin && (
+                                <div className="mt-2 space-y-3 p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/10">
+                                    <h3 className="text-[10px] uppercase tracking-wider font-bold text-indigo-300 mb-1">Host Controls</h3>
+
+                                    <div className="space-y-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => socket?.emit('admin-mute-all', { meetingId })}
+                                                className="group flex items-center justify-center gap-2 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/10 hover:border-red-500/30 transition-all active:scale-95"
+                                                title="Mute everyone in the meeting"
+                                            >
+                                                <div className="p-1 rounded bg-red-500/20 text-red-300 group-hover:text-red-200">
+                                                    <MicOff size={14} />
+                                                </div>
+                                                <span className="text-xs font-medium text-red-200 group-hover:text-white">Mute All</span>
+                                            </button>
+
+                                            <button
+                                                onClick={() => socket?.emit('admin-unmute-all', { meetingId })}
+                                                className="group flex items-center justify-center gap-2 p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/10 hover:border-emerald-500/30 transition-all active:scale-95"
+                                                title="Allow everyone to unmute"
+                                            >
+                                                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 group-hover:text-emerald-200">
+                                                    <Mic size={14} />
+                                                </div>
+                                                <span className="text-xs font-medium text-emerald-200 group-hover:text-white">Unmute All</span>
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => socket?.emit('admin-stop-video-all', { meetingId })}
+                                                className="group flex items-center justify-center gap-2 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/10 hover:border-red-500/30 transition-all active:scale-95"
+                                                title="Disable everyone's camera"
+                                            >
+                                                <div className="p-1 rounded bg-red-500/20 text-red-300 group-hover:text-red-200">
+                                                    <VideoOff size={14} />
+                                                </div>
+                                                <span className="text-xs font-medium text-red-200 group-hover:text-white">Video Off</span>
+                                            </button>
+
+                                            <button
+                                                onClick={() => socket?.emit('admin-allow-video-all', { meetingId })}
+                                                className="group flex items-center justify-center gap-2 p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/10 hover:border-emerald-500/30 transition-all active:scale-95"
+                                                title="Allow everyone's camera"
+                                            >
+                                                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 group-hover:text-emerald-200">
+                                                    <Video size={14} />
+                                                </div>
+                                                <span className="text-xs font-medium text-emerald-200 group-hover:text-white">Allow Cam</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
                             {/* Me */}

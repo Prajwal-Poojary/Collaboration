@@ -184,6 +184,69 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- GLOBAL ADMIN CONTROLS ---
+
+    socket.on('admin-mute-all', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} hard muting ALL in ${meetingId}`);
+
+            const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
+            if (socketsInRoom) {
+                socketsInRoom.forEach(socketId => {
+                    const s = io.sockets.sockets.get(socketId);
+                    if (s && s.userId !== meeting.adminId) {
+                        meeting.mutedUsers.add(s.userId);
+                    }
+                });
+            }
+
+            // Broadcast the full list of now muted users (or just a generic "all" event)
+            // Sending generic "all" event is more efficient for this specific action
+            const allMuted = Array.from(meeting.mutedUsers);
+            io.to(meetingId).emit('all-users-hard-muted', { mutedUsers: allMuted });
+        }
+    });
+
+    socket.on('admin-unmute-all', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} hard unmuting ALL in ${meetingId}`);
+            // We clear the set, or specifically remove everyone currently in the room?
+            // "Unmute All" usually implies clearing restrictions.
+            meeting.mutedUsers.clear();
+            io.to(meetingId).emit('all-users-hard-unmuted');
+        }
+    });
+
+    socket.on('admin-stop-video-all', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} stopping ALL video in ${meetingId}`);
+
+            const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
+            if (socketsInRoom) {
+                socketsInRoom.forEach(socketId => {
+                    const s = io.sockets.sockets.get(socketId);
+                    if (s && s.userId !== meeting.adminId) {
+                        meeting.videoOffUsers.add(s.userId);
+                    }
+                });
+            }
+            const allVideoOff = Array.from(meeting.videoOffUsers);
+            io.to(meetingId).emit('all-users-hard-video-off', { videoOffUsers: allVideoOff });
+        }
+    });
+
+    socket.on('admin-allow-video-all', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.adminId === socket.userId) {
+            console.log(`Admin ${socket.userId} allowing ALL video in ${meetingId}`);
+            meeting.videoOffUsers.clear();
+            io.to(meetingId).emit('all-users-hard-video-allow');
+        }
+    });
+
     socket.on('admin-response-entry', ({ meetingId, targetUserId, approved }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
