@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil } from 'lucide-react';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
 
@@ -44,9 +44,12 @@ interface Participant {
 }
 
 interface ChatMessage {
+    _id?: string;
     text: string;
+    senderId?: string;
     senderName: string;
     timestamp: string;
+    isEdited?: boolean;
     file?: {
         name: string;
         data: string;
@@ -94,6 +97,10 @@ const MeetingRoom = () => {
     const streamRef = useRef<MediaStream | null>(null);
     const [screenSharingId, setScreenSharingId] = useState<string | null>(null);
     const [videoStatus, setVideoStatus] = useState<{ [key: string]: boolean }>({});
+
+    // Message Editing State
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState('');
 
     // Restricted Entry State
     const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
@@ -348,6 +355,12 @@ const MeetingRoom = () => {
                     setMessages(prev => [...prev, message]);
                 });
 
+                newSocket.on('message-edited', ({ messageId, newText }: { messageId: string, newText: string }) => {
+                    setMessages(prev => prev.map(msg =>
+                        msg._id === messageId ? { ...msg, text: newText, isEdited: true } : msg
+                    ));
+                });
+
                 newSocket.on('user-started-sharing', ({ userId }: { userId: string }) => {
                     console.log('User started sharing:', userId);
                     setScreenSharingId(userId);
@@ -460,6 +473,25 @@ const MeetingRoom = () => {
                 senderName: user?.name
             });
             setNewMessage('');
+        }
+    };
+
+    const handleEditMessage = (messageId: string, currentText: string) => {
+        setEditingMessageId(messageId);
+        setEditValue(currentText);
+    };
+
+    const saveEditedMessage = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editValue.trim() && socket && editingMessageId) {
+            socket.emit('edit-message', {
+                meetingId,
+                messageId: editingMessageId,
+                newText: editValue,
+                senderId: user?._id
+            });
+            setEditingMessageId(null);
+            setEditValue('');
         }
     };
 
@@ -1023,12 +1055,28 @@ const MeetingRoom = () => {
                         </div>
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
                             {messages.map((msg, index) => (
-                                <div key={index} className="flex flex-col gap-1 anim-fade-in">
+                                <div key={msg._id || index} className="flex flex-col gap-1 anim-fade-in group">
                                     <div className="flex items-baseline justify-between gap-2">
-                                        <span className="text-xs font-bold text-indigo-400">{msg.senderName}</span>
-                                        <span className="text-[10px] text-gray-500">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-indigo-400">{msg.senderName}</span>
+                                            {msg.isEdited && <span className="text-[10px] text-gray-500 italic">(edited)</span>}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {msg && user && (String(msg.senderId || (msg as any).sender) === String(user._id)) && !(msg.file && msg.file.data) && (
+                                                <button
+                                                    onClick={() => {
+                                                        handleEditMessage(msg._id!, msg.text);
+                                                    }}
+                                                    className="opacity-0 group-hover:opacity-100 transition-all p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-indigo-400"
+                                                    title="Edit Message"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                            )}
+                                            <span className="text-[10px] text-gray-500">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
                                     </div>
-                                    <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed text-gray-200 min-w-[200px]">
+                                    <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed text-gray-200 min-w-[200px] relative">
                                         {msg.file && msg.file.data ? (
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/10 group/file">
@@ -1062,6 +1110,31 @@ const MeetingRoom = () => {
                                                     </div>
                                                 )}
                                             </div>
+                                        ) : editingMessageId === msg._id ? (
+                                            <form onSubmit={saveEditedMessage} className="flex flex-col gap-2">
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    value={editValue}
+                                                    onChange={(e) => setEditValue(e.target.value)}
+                                                    className="w-full bg-black/20 border border-indigo-500/50 rounded-lg px-2 py-1 text-white focus:outline-none text-sm"
+                                                />
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingMessageId(null)}
+                                                        className="text-[10px] text-gray-400 hover:text-white"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                </div>
+                                            </form>
                                         ) : (
                                             msg.text
                                         )}

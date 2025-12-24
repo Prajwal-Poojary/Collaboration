@@ -381,18 +381,35 @@ io.on('connection', (socket) => {
             const messageData = { meetingId, sender: senderId, senderName, text: text || '' };
             if (file) messageData.file = file;
 
-            // Broadcast immediately (Ephemeral)
-            io.to(meetingId).emit('receive-message', {
-                text: messageData.text,
-                file: messageData.file,
-                senderName: messageData.senderName,
-                timestamp: new Date(),
-            });
-
             // Try to persist
-            await Message.create(messageData);
+            const message = await Message.create(messageData);
+
+            // Broadcast after persistence to ensure ID and timestamps are available
+            io.to(meetingId).emit('receive-message', {
+                _id: message._id.toString(),
+                text: message.text,
+                file: message.file,
+                senderId: message.sender.toString(),
+                senderName: message.senderName,
+                timestamp: message.createdAt,
+                isEdited: message.isEdited
+            });
         } catch (error) {
             console.error('Error saving message (chat works ephemerally):', error);
+        }
+    });
+
+    socket.on('edit-message', async ({ meetingId, messageId, newText, senderId }) => {
+        try {
+            const message = await Message.findById(messageId);
+            if (message && message.sender.toString() === senderId) {
+                message.text = newText;
+                message.isEdited = true;
+                await message.save();
+                io.to(meetingId).emit('message-edited', { messageId, newText });
+            }
+        } catch (error) {
+            console.error('Error editing message:', error);
         }
     });
 

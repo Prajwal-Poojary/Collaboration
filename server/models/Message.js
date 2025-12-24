@@ -21,6 +21,10 @@ const messageSchema = new mongoose.Schema({
         mimeType: String, // MIME type
         size: Number,
     },
+    isEdited: {
+        type: Boolean,
+        default: false,
+    },
 }, {
     timestamps: true,
 });
