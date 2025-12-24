@@ -4,8 +4,9 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool } from 'lucide-react';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
+import Whiteboard from '../components/Whiteboard';
 
 interface Peer {
     userId: string;
@@ -97,6 +98,9 @@ const MeetingRoom = () => {
     // Restricted Entry State
     const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
     const [entryRequests, setEntryRequests] = useState<{ userId: string; name: string }[]>([]);
+
+    // Whiteboard State
+    const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
 
     // Keep streamRef synced with state
     useEffect(() => {
@@ -373,8 +377,18 @@ const MeetingRoom = () => {
                 });
 
                 newSocket.on('participants-list', (list: Participant[]) => {
-                    console.log('Received participants list:', list);
                     setAllParticipants(list);
+                });
+
+                // --- WHITEBOARD LISTENERS ---
+                newSocket.on('whiteboard-started', ({ ownerId }: { ownerId: string }) => {
+                    console.log('Whiteboard started by', ownerId);
+                    setIsWhiteboardOpen(true);
+                });
+
+                newSocket.on('whiteboard-stopped', () => {
+                    console.log('Whiteboard stopped');
+                    setIsWhiteboardOpen(false);
                 });
 
             })
@@ -517,6 +531,20 @@ const MeetingRoom = () => {
                 }
             })
             .catch(err => console.error("Failed to share screen:", err));
+    };
+
+    const toggleWhiteboard = () => {
+        if (!socket) return;
+
+        if (isWhiteboardOpen) {
+            // Only owner or admin should stop? For now let anyone stop if they can start?
+            // "Presenter" logic: if I started it, I stop it.
+            // Or if allow collaboration, maybe a "Close" button on whiteboard handles it.
+            // This toggle on toolbar:
+            socket.emit('stop-whiteboard', { meetingId });
+        } else {
+            socket.emit('start-whiteboard', { meetingId });
+        }
     };
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -869,7 +897,40 @@ const MeetingRoom = () => {
 
             <div className="flex flex-1 overflow-hidden relative z-10 p-6 pt-20 pb-24 gap-6">
                 <div className={`flex-1 transition-all duration-500 ease-in-out ${showChat ? 'w-2/3' : 'w-full'}`}>
-                    {screenSharingId ? (
+                    {isWhiteboardOpen ? (
+                        // Whiteboard Layout (Main View)
+                        <div className="flex gap-4 h-full">
+                            <div className="flex-1 relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+                                <Whiteboard
+                                    socket={socket}
+                                    meetingId={meetingId || ''}
+                                    onClose={toggleWhiteboard}
+                                />
+                            </div>
+                            {/* Side Panel for Videos */}
+                            <div className="w-1/4 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
+                                <div className="h-48 flex-shrink-0">
+                                    <VideoDisplay
+                                        stream={stream}
+                                        name={`You (${user?.name})`}
+                                        isLocal={true}
+                                        isMirrored={true}
+                                        isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
+                                        isMicOn={isMicOn}
+                                    />
+                                </div>
+                                {peers.map(peer => (
+                                    <div key={peer.userId} className="h-48 flex-shrink-0">
+                                        <VideoDisplay
+                                            stream={peer.stream}
+                                            name={peer.name}
+                                            isVideoOn={videoStatus[peer.userId] ?? true}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : screenSharingId ? (
                         // Spotlight Layout
                         <div className="flex gap-4 h-full">
                             <div className="flex-1 relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
@@ -1258,6 +1319,10 @@ const MeetingRoom = () => {
 
                     <button onClick={shareScreen} className="p-4 rounded-full bg-white/10 hover:bg-indigo-500 hover:text-white hover:shadow-lg hover:shadow-indigo-500/30 text-gray-300 transition-all duration-300" title="Share Screen">
                         <Share size={22} />
+                    </button>
+
+                    <button onClick={toggleWhiteboard} className={`p-4 rounded-full transition-all duration-300 ${isWhiteboardOpen ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`} title="Whiteboard">
+                        <PenTool size={22} />
                     </button>
 
                     <button onClick={() => { setShowChat(!showChat); setShowParticipants(false); }} className={`p-4 rounded-full transition-all duration-300 relative ${showChat ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>

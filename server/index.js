@@ -333,19 +333,66 @@ io.on('connection', (socket) => {
         socket.to(meetingId).emit('user-video-status', { userId, isVideoOn });
     });
 
+    // --- WHITEBOARD EVENTS ---
+    socket.on('start-whiteboard', ({ meetingId }) => {
+        console.log(`Whiteboard started in ${meetingId} by ${socket.userId}`);
+        const meeting = meetings[meetingId];
+        if (meeting) {
+            // Restore previous state if exists
+            io.to(meetingId).emit('whiteboard-started', { ownerId: socket.userId });
+            if (meeting.whiteboardElements) {
+                socket.emit('wb-update-elements', meeting.whiteboardElements);
+            }
+        }
+    });
+
+    socket.on('stop-whiteboard', ({ meetingId }) => {
+        console.log(`Whiteboard stopped in ${meetingId} by ${socket.userId}`);
+        io.to(meetingId).emit('whiteboard-stopped');
+    });
+
+    // New State-based Sync
+    socket.on('wb-update', ({ meetingId, elements }) => {
+        const meeting = meetings[meetingId];
+        if (meeting) {
+            meeting.whiteboardElements = elements; // Persist state
+            // Broadcast to others
+            socket.to(meetingId).emit('wb-update-elements', elements);
+        }
+    });
+
+    socket.on('wb-request-state', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.whiteboardElements) {
+            socket.emit('wb-update-elements', meeting.whiteboardElements);
+        }
+    });
+
+    socket.on('whiteboard-clear', ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting) {
+            meeting.whiteboardElements = [];
+            socket.to(meetingId).emit('wb-update-elements', []);
+        }
+    });
+
     socket.on('send-message', async ({ meetingId, text, file, senderId, senderName }) => {
         try {
             const messageData = { meetingId, sender: senderId, senderName, text: text || '' };
             if (file) messageData.file = file;
-            const message = await Message.create(messageData);
+
+            // Broadcast immediately (Ephemeral)
             io.to(meetingId).emit('receive-message', {
-                text: message.text,
-                file: message.file,
-                senderName: message.senderName,
-                timestamp: message.createdAt,
+                text: messageData.text,
+                file: messageData.file,
+                senderName: messageData.senderName,
+                timestamp: new Date(),
             });
+
+            // Try to persist
+            await Message.create(messageData);
         } catch (error) {
-            console.error('Error saving message:', error);
+            console.error('Error saving message (chat works ephemerally):', error);
         }
     });
 
