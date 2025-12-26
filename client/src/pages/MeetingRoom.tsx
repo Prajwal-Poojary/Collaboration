@@ -108,6 +108,7 @@ const MeetingRoom = () => {
 
     // Whiteboard State
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+    const [whiteboardOwnerId, setWhiteboardOwnerId] = useState<string | null>(null);
 
     // Keep streamRef synced with state
     useEffect(() => {
@@ -396,11 +397,13 @@ const MeetingRoom = () => {
                 // --- WHITEBOARD LISTENERS ---
                 newSocket.on('whiteboard-started', ({ ownerId }: { ownerId: string }) => {
                     console.log('Whiteboard started by', ownerId);
+                    setWhiteboardOwnerId(ownerId);
                     setIsWhiteboardOpen(true);
                 });
 
                 newSocket.on('whiteboard-stopped', () => {
                     console.log('Whiteboard stopped');
+                    setWhiteboardOwnerId(null);
                     setIsWhiteboardOpen(false);
                 });
 
@@ -569,12 +572,22 @@ const MeetingRoom = () => {
         if (!socket) return;
 
         if (isWhiteboardOpen) {
-            // Only owner or admin should stop? For now let anyone stop if they can start?
-            // "Presenter" logic: if I started it, I stop it.
-            // Or if allow collaboration, maybe a "Close" button on whiteboard handles it.
-            // This toggle on toolbar:
-            socket.emit('stop-whiteboard', { meetingId });
+            // Only owner can close it for everyone
+            if (whiteboardOwnerId === user?._id) {
+                if (confirm("Closing the whiteboard will end the session for everyone. Continue?")) {
+                    socket.emit('stop-whiteboard', { meetingId });
+                }
+            } else {
+                alert("Only the presenter (who started the whiteboard) can close it.");
+                // Optional: Allow hiding locally? "Others... can only watch".
+                // Requirement doesn't explicitly say they can't hide it, but usually "close" means stop session.
+                // For now, prevent "Stopping" session. Hiding locally isn't implemented in UI structure (it's an overlay/modal typically?)
+                // Looking at render (I need to check render below), it seems it might be an overlay. 
+                // If it's a modal, user might want to close their view. 
+                // But let's stick to "Only owner closes session".
+            }
         } else {
+            // Start becoming owner
             socket.emit('start-whiteboard', { meetingId });
         }
     };
@@ -937,6 +950,7 @@ const MeetingRoom = () => {
                                     socket={socket}
                                     meetingId={meetingId || ''}
                                     onClose={toggleWhiteboard}
+                                    isReadOnly={whiteboardOwnerId !== user?._id}
                                 />
                             </div>
                             {/* Side Panel for Videos */}

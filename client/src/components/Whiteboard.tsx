@@ -11,6 +11,7 @@ interface WhiteboardProps {
     socket: any;
     meetingId: string;
     onClose: () => void;
+    isReadOnly?: boolean;
 }
 
 type ToolType = 'pen' | 'eraser' | 'highlighter' | 'text' | 'line' | 'arrow' | 'rect' | 'circle' | 'move';
@@ -43,7 +44,7 @@ const COLORS = [
     '#3b82f6', '#a855f7', '#ec4899', '#9ca3af', '#000000'
 ];
 
-const Whiteboard: React.FC<WhiteboardProps> = ({ socket, meetingId, onClose }) => {
+const Whiteboard: React.FC<WhiteboardProps> = ({ socket, meetingId, onClose, isReadOnly = false }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [elements, setElements] = useState<WhiteboardElement[]>([]);
     const [history, setHistory] = useState<WhiteboardElement[][]>([]);
@@ -277,6 +278,8 @@ const Whiteboard: React.FC<WhiteboardProps> = ({ socket, meetingId, onClose }) =
     };
 
     const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        if (isReadOnly) return;
+
         console.log("Whiteboard MouseDown. Tool:", tool);
         if (tool === 'move') {
             setIsDrawing(true);
@@ -494,87 +497,101 @@ const Whiteboard: React.FC<WhiteboardProps> = ({ socket, meetingId, onClose }) =
     return (
         <div className="relative w-full h-full bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col group">
             {/* Toolbar */}
-            <div className="absolute top-4 left-4 flex flex-col gap-2 bg-zinc-800/90 backdrop-blur-md p-2 rounded-xl border border-white/10 shadow-lg z-20">
-                <div className="flex flex-col gap-1">
-                    {[
-                        { t: 'move', i: <Move size={20} />, label: "Move/Pan" },
-                        { t: 'pen', i: <Pen size={20} />, label: "Pen" },
-                        { t: 'eraser', i: <Eraser size={20} />, label: "Eraser" }, // Vector eraser not implemented fully yet, acts as placeholder or paint white?
-                        { t: 'highlighter', i: <Highlighter size={20} />, label: "Highlighter" },
-                        { t: 'text', i: <Type size={20} />, label: "Text" },
-                        { t: 'line', i: <Minus size={20} />, label: "Line" },
-                        { t: 'arrow', i: <ArrowRight size={20} />, label: "Arrow" },
-                        { t: 'rect', i: <Square size={20} />, label: "Rectangle" },
-                        { t: 'circle', i: <CircleIcon size={20} />, label: "Circle" },
-                    ].map(btn => (
-                        <button
-                            key={btn.t}
-                            onClick={() => setTool(btn.t as ToolType)}
-                            className={`p-2 rounded-lg transition-colors ${tool === btn.t ? 'bg-indigo-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
-                            title={btn.label}
-                        >
-                            {btn.i}
-                        </button>
-                    ))}
+            {!isReadOnly && (
+                <div className="absolute top-4 left-4 flex flex-col gap-2 bg-zinc-800/90 backdrop-blur-md p-2 rounded-xl border border-white/10 shadow-lg z-20">
+                    <div className="flex flex-col gap-1">
+                        {[
+                            { t: 'move', i: <Move size={20} />, label: "Move/Pan" },
+                            { t: 'pen', i: <Pen size={20} />, label: "Pen" },
+                            { t: 'eraser', i: <Eraser size={20} />, label: "Eraser" }, // Vector eraser not implemented fully yet, acts as placeholder or paint white?
+                            { t: 'highlighter', i: <Highlighter size={20} />, label: "Highlighter" },
+                            { t: 'text', i: <Type size={20} />, label: "Text" },
+                            { t: 'line', i: <Minus size={20} />, label: "Line" },
+                            { t: 'arrow', i: <ArrowRight size={20} />, label: "Arrow" },
+                            { t: 'rect', i: <Square size={20} />, label: "Rectangle" },
+                            { t: 'circle', i: <CircleIcon size={20} />, label: "Circle" },
+                        ].map(btn => (
+                            <button
+                                key={btn.t}
+                                onClick={() => setTool(btn.t as ToolType)}
+                                className={`p-2 rounded-lg transition-colors ${tool === btn.t ? 'bg-indigo-500 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                                title={btn.label}
+                            >
+                                {btn.i}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Options Bar */}
-            <div className="absolute top-4 left-20 right-20 flex justify-center pointer-events-none">
-                <div className="pointer-events-auto bg-zinc-800/90 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 shadow-lg flex items-center gap-4">
-                    <div className="flex items-center gap-2 border-r border-white/10 pr-4">
-                        <button onClick={handleUndo} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg">
-                            <Undo size={20} />
-                        </button>
-                        <button onClick={handleRedo} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg">
-                            <Redo size={20} />
-                        </button>
-                    </div>
+            {!isReadOnly && (
+                <div className="absolute top-4 left-20 right-20 flex justify-center pointer-events-none">
+                    <div className="pointer-events-auto bg-zinc-800/90 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 shadow-lg flex items-center gap-4">
+                        <div className="flex items-center gap-2 border-r border-white/10 pr-4">
+                            <button onClick={handleUndo} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg">
+                                <Undo size={20} />
+                            </button>
+                            <button onClick={handleRedo} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg">
+                                <Redo size={20} />
+                            </button>
+                        </div>
 
-                    <div className="flex items-center gap-1 border-r border-white/10 pr-4">
-                        {COLORS.map(c => (
-                            <button
-                                key={c}
-                                onClick={() => setColor(c)}
-                                className={`w-6 h-6 rounded-full border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
-                                style={{ backgroundColor: c }}
+                        <div className="flex items-center gap-1 border-r border-white/10 pr-4">
+                            {COLORS.map(c => (
+                                <button
+                                    key={c}
+                                    onClick={() => setColor(c)}
+                                    className={`w-6 h-6 rounded-full border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
+                                    style={{ backgroundColor: c }}
+                                />
+                            ))}
+                            <input
+                                type="color"
+                                value={color}
+                                onChange={e => setColor(e.target.value)}
+                                className="w-6 h-6 p-0 border-0 rounded-full overflow-hidden ml-1"
                             />
-                        ))}
-                        <input
-                            type="color"
-                            value={color}
-                            onChange={e => setColor(e.target.value)}
-                            className="w-6 h-6 p-0 border-0 rounded-full overflow-hidden ml-1"
-                        />
-                    </div>
+                        </div>
 
-                    <div className="flex items-center gap-2 border-r border-white/10 pr-4">
-                        <span className="text-xs text-gray-400 font-mono">Size</span>
-                        <input
-                            type="range"
-                            min="1" max="20"
-                            value={lineWidth}
-                            onChange={e => setLineWidth(Number(e.target.value))}
-                            className="w-24 accent-indigo-500"
-                        />
-                    </div>
+                        <div className="flex items-center gap-2 border-r border-white/10 pr-4">
+                            <span className="text-xs text-gray-400 font-mono">Size</span>
+                            <input
+                                type="range"
+                                min="1" max="20"
+                                value={lineWidth}
+                                onChange={e => setLineWidth(Number(e.target.value))}
+                                className="w-24 accent-indigo-500"
+                            />
+                        </div>
 
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => handleZoom(-0.1)}><ZoomOut size={18} className="text-gray-400" /></button>
-                        <span className="text-xs text-gray-400 w-8 text-center">{Math.round(camera.zoom * 100)}%</span>
-                        <button onClick={() => handleZoom(0.1)}><ZoomIn size={18} className="text-gray-400" /></button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => handleZoom(-0.1)}><ZoomOut size={18} className="text-gray-400" /></button>
+                            <span className="text-xs text-gray-400 w-8 text-center">{Math.round(camera.zoom * 100)}%</span>
+                            <button onClick={() => handleZoom(0.1)}><ZoomIn size={18} className="text-gray-400" /></button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
+
+            {isReadOnly && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 flex justify-center pointer-events-none z-20">
+                    <div className="bg-red-500/90 backdrop-blur-md px-4 py-2 rounded-xl border border-red-400/30 shadow-lg flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">View Only</span>
+                    </div>
+                </div>
+            )}
 
             {/* Actions */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 bg-zinc-800/90 backdrop-blur-md p-2 rounded-xl border border-white/10 shadow-lg z-20">
                 <button onClick={handleExport} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg" title="Export Image">
                     <Download size={20} />
                 </button>
-                <button onClick={clearBoard} className="p-2 text-red-400 hover:text-white hover:bg-red-500/50 rounded-lg" title="Clear Board">
-                    <Trash2 size={20} />
-                </button>
+                {!isReadOnly && (
+                    <button onClick={clearBoard} className="p-2 text-red-400 hover:text-white hover:bg-red-500/50 rounded-lg" title="Clear Board">
+                        <Trash2 size={20} />
+                    </button>
+                )}
                 <button onClick={onClose} className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg" title="Close">
                     <X size={20} />
                 </button>

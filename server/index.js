@@ -96,7 +96,9 @@ io.on('connection', (socket) => {
                 videoOffUsers: new Set(),
                 kickedUsers: new Set(), // Restricted (needs approval)
                 blockedUsers: new Set(), // Permanently banned
-                participants: {} // { userId: { name, isOnline } }
+                blockedUsers: new Set(), // Permanently banned
+                participants: {}, // { userId: { name, isOnline } }
+                whiteboardOwnerId: null // Track who owns the whiteboard
             };
             console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
         }
@@ -139,6 +141,15 @@ io.on('connection', (socket) => {
 
         console.log(`User ${name} (${userId}) joined room ${meetingId}. Is Admin: ${isAdmin}`);
         socket.to(meetingId).emit('user-connected', { userId, name });
+
+        // If whiteboard is active, tell the new user
+        if (meeting.whiteboardOwnerId) {
+            socket.emit('whiteboard-started', { ownerId: meeting.whiteboardOwnerId });
+            // And send state
+            if (meeting.whiteboardElements) {
+                socket.emit('wb-update-elements', meeting.whiteboardElements);
+            }
+        }
 
         // Send full participants list to everyone in the room
         io.to(meetingId).emit('participants-list', Object.entries(meeting.participants).map(([id, p]) => ({
@@ -335,11 +346,25 @@ io.on('connection', (socket) => {
 
     // --- WHITEBOARD EVENTS ---
     socket.on('start-whiteboard', ({ meetingId }) => {
-        console.log(`Whiteboard started in ${meetingId} by ${socket.userId}`);
+        console.log(`Whiteboard request in ${meetingId} by ${socket.userId}`);
         const meeting = meetings[meetingId];
         if (meeting) {
-            // Restore previous state if exists
-            io.to(meetingId).emit('whiteboard-started', { ownerId: socket.userId });
+            // If already open, just join? Or exclusive?
+            // "Only the participant who clicks... is allowed... others view only"
+            // Implies if I click and it's not open, I become owner.
+            // If it IS open, do I takeover? Or just view?
+            // "User clicks Whiteboard -> Grant edit permission to that user -> Set all others to view-only"
+            // This implies "First to click" or "User clicks to Start".
+            // Let's assume: If no owner, setter becomes owner. If owner exists, join as viewer.
+
+            if (!meeting.whiteboardOwnerId) {
+                meeting.whiteboardOwnerId = socket.userId;
+                console.log(`Whiteboard started. Owner: ${socket.userId}`);
+            }
+
+            // Broadcast to everyone (including sender so they know they are owner)
+            io.to(meetingId).emit('whiteboard-started', { ownerId: meeting.whiteboardOwnerId });
+
             if (meeting.whiteboardElements) {
                 socket.emit('wb-update-elements', meeting.whiteboardElements);
             }
@@ -347,8 +372,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('stop-whiteboard', ({ meetingId }) => {
-        console.log(`Whiteboard stopped in ${meetingId} by ${socket.userId}`);
-        io.to(meetingId).emit('whiteboard-stopped');
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.whiteboardOwnerId === socket.userId) {
+            console.log(`Whiteboard stopped in ${meetingId} by owner ${socket.userId}`);
+            meeting.whiteboardOwnerId = null;
+            io.to(meetingId).emit('whiteboard-stopped');
+        } else {
+            console.log(`User ${socket.userId} attempted to stop whiteboard but is not owner.`);
+        }
     });
 
     // New State-based Sync
@@ -375,6 +406,10 @@ io.on('connection', (socket) => {
             socket.to(meetingId).emit('wb-update-elements', []);
         }
     });
+
+    // Cleanup on disconnect
+    // Logic moved to disconnect handler but we should double check here if we need specific listeners
+
 
     socket.on('send-message', async ({ meetingId, text, file, senderId, senderName }) => {
         try {
@@ -436,8 +471,16 @@ io.on('connection', (socket) => {
                     name: p.name,
                     isOnline: p.isOnline,
                     totalDuration: p.totalDuration,
+                    totalDuration: p.totalDuration,
                     lastJoinTime: p.lastJoinTime
                 })));
+
+                // If owner left, close whiteboard?
+                if (meeting.whiteboardOwnerId === socket.userId) {
+                    console.log(`Whiteboard owner ${socket.userId} left. Closing whiteboard.`);
+                    meeting.whiteboardOwnerId = null;
+                    io.to(socket.meetingId).emit('whiteboard-stopped');
+                }
             }
 
             // Clean up meeting if admin leaves? Or keep it specific logic?
