@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil, Pin, PinOff } from 'lucide-react';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
 
@@ -109,6 +109,13 @@ const MeetingRoom = () => {
     // Whiteboard State
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
     const [whiteboardOwnerId, setWhiteboardOwnerId] = useState<string | null>(null);
+
+    // Pin State
+    const [pinnedUserId, setPinnedUserId] = useState<string | null>(null);
+
+    const togglePin = (targetUserId: string) => {
+        setPinnedUserId(prev => prev === targetUserId ? null : targetUserId);
+    };
 
     // Keep streamRef synced with state
     useEffect(() => {
@@ -963,6 +970,8 @@ const MeetingRoom = () => {
                                         isMirrored={true}
                                         isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
                                         isMicOn={isMicOn}
+                                        onPin={() => user?._id && togglePin(user._id)}
+                                        isPinned={pinnedUserId === user?._id}
                                     />
                                 </div>
                                 {peers.map(peer => (
@@ -971,58 +980,77 @@ const MeetingRoom = () => {
                                             stream={peer.stream}
                                             name={peer.name}
                                             isVideoOn={videoStatus[peer.userId] ?? true}
+                                            onPin={() => togglePin(peer.userId)}
+                                            isPinned={pinnedUserId === peer.userId}
                                         />
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    ) : screenSharingId ? (
-                        // Spotlight Layout
+                    ) : (screenSharingId || pinnedUserId) ? (
+                        // Spotlight Layout (Screen Share OR Pinned User)
                         <div className="flex gap-4 h-full">
                             <div className="flex-1 relative bg-gray-900/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
-                                {screenSharingId === user?._id ? (
-                                    <VideoDisplay
-                                        stream={stream}
-                                        name={`You (${user?.name})`}
-                                        isLocal={true}
-                                        isMirrored={false}
-                                        isVideoOn={videoStatus[user?._id] ?? isVideoOn}
-                                        isMicOn={isMicOn}
-                                    />
-                                ) : (
-                                    (() => {
-                                        const sharer = peers.find(p => p.userId === screenSharingId);
+                                {(() => {
+                                    const mainUserId = screenSharingId || pinnedUserId;
+                                    const isMe = mainUserId === user?._id;
+
+                                    if (isMe) {
+                                        return (
+                                            <VideoDisplay
+                                                stream={stream}
+                                                name={`You (${user?.name})`}
+                                                isLocal={true}
+                                                isMirrored={!screenSharingId} // Mirror if NOT sharing screen (i.e. if just pinned)
+                                                isVideoOn={videoStatus[user?._id || ''] ?? isVideoOn}
+                                                isMicOn={isMicOn}
+                                                onPin={() => user?._id && togglePin(user._id)}
+                                                isPinned={pinnedUserId === user?._id}
+                                            />
+                                        );
+                                    } else {
+                                        const sharer = peers.find(p => p.userId === mainUserId);
                                         return sharer ? (
                                             <VideoDisplay
                                                 stream={sharer.stream}
                                                 name={sharer.name}
                                                 isVideoOn={videoStatus[sharer.userId] ?? true}
+                                                onPin={() => togglePin(sharer.userId)}
+                                                isPinned={pinnedUserId === sharer.userId}
                                             />
-                                        ) : <div className="flex items-center justify-center h-full text-white">Sharer not found</div>;
-                                    })()
-                                )}
+                                        ) : <div className="flex items-center justify-center h-full text-white">Participant not found</div>;
+                                    }
+                                })()}
                             </div>
                             <div className="w-1/4 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2">
-                                {screenSharingId !== user?._id && (
-                                    <div className="h-48 flex-shrink-0">
-                                        <div className="h-48 flex-shrink-0">
-                                            <VideoDisplay
-                                                stream={stream}
-                                                name={`You (${user?.name})`}
-                                                isLocal={true}
-                                                isMirrored={true}
-                                                isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
-                                                isMicOn={isMicOn}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                                {peers.filter(p => p.userId !== screenSharingId).map(peer => (
+                                {(() => {
+                                    const mainUserId = screenSharingId || pinnedUserId;
+                                    if (mainUserId !== user?._id) {
+                                        return (
+                                            <div className="h-48 flex-shrink-0">
+                                                <VideoDisplay
+                                                    stream={stream}
+                                                    name={`You (${user?.name})`}
+                                                    isLocal={true}
+                                                    isMirrored={true}
+                                                    isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
+                                                    isMicOn={isMicOn}
+                                                    onPin={() => user?._id && togglePin(user._id)}
+                                                    isPinned={pinnedUserId === user?._id}
+                                                />
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                                {peers.filter(p => p.userId !== (screenSharingId || pinnedUserId)).map(peer => (
                                     <div key={peer.userId} className="h-48 flex-shrink-0">
                                         <VideoDisplay
                                             stream={peer.stream}
                                             name={peer.name}
                                             isVideoOn={videoStatus[peer.userId] ?? true}
+                                            onPin={() => togglePin(peer.userId)}
+                                            isPinned={pinnedUserId === peer.userId}
                                         />
                                     </div>
                                 ))}
@@ -1042,10 +1070,19 @@ const MeetingRoom = () => {
                                 isMirrored={true}
                                 isVideoOn={user?._id ? (videoStatus[user._id] ?? isVideoOn) : isVideoOn}
                                 isMicOn={isMicOn}
+                                onPin={() => user?._id && togglePin(user._id)}
+                                isPinned={pinnedUserId === user?._id}
                             />
 
                             {peers.map((peer) => (
-                                <VideoDisplay key={peer.userId} stream={peer.stream} name={peer.name} isVideoOn={videoStatus[peer.userId] ?? true} />
+                                <VideoDisplay
+                                    key={peer.userId}
+                                    stream={peer.stream}
+                                    name={peer.name}
+                                    isVideoOn={videoStatus[peer.userId] ?? true}
+                                    onPin={() => togglePin(peer.userId)}
+                                    isPinned={pinnedUserId === peer.userId}
+                                />
                             ))}
                         </div>
                     )}
@@ -1437,7 +1474,7 @@ const MeetingRoom = () => {
     );
 };
 
-const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMicOn = true, isVideoOn = true }: { stream: MediaStream | null, name?: string, isLocal?: boolean, isMirrored?: boolean, isMicOn?: boolean, isVideoOn?: boolean }) => {
+const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMicOn = true, isVideoOn = true, onPin, isPinned = false }: { stream: MediaStream | null, name?: string, isLocal?: boolean, isMirrored?: boolean, isMicOn?: boolean, isVideoOn?: boolean, onPin?: () => void, isPinned?: boolean }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
@@ -1484,6 +1521,19 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
                 <span className="text-xs font-semibold tracking-wide text-white">{name || 'Participant'}</span>
                 {isLocal && !isMicOn && <MicOff size={12} className="text-red-400" />}
             </div>
+
+            {onPin && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPin();
+                    }}
+                    className={`absolute top-4 right-4 p-2 rounded-full backdrop-blur-md border border-white/10 transition-all duration-300 opacity-0 group-hover:opacity-100 ${isPinned ? 'bg-indigo-500 text-white opacity-100' : 'bg-black/40 text-white hover:bg-white/20'}`}
+                    title={isPinned ? "Unpin" : "Pin"}
+                >
+                    {isPinned ? <PinOff size={16} /> : <Pin size={16} />}
+                </button>
+            )}
         </motion.div>
     );
 };
