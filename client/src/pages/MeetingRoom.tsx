@@ -379,7 +379,10 @@ const MeetingRoom = () => {
                     setScreenSharingId(null);
                 });
 
-                newSocket.on('user-disconnected', ({ userId }: { userId: string }) => {
+                newSocket.on('user-disconnected', ({ userId, name }: { userId: string, name?: string }) => {
+                    if (name) {
+                        showToast(`${name} has left the meeting`);
+                    }
                     console.log('User disconnected:', userId);
                     if (peersRef.current[userId]) {
                         peersRef.current[userId].close();

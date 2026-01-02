@@ -452,9 +452,15 @@ io.on('connection', (socket) => {
         console.log('User disconnected:', socket.id);
         if (socket.meetingId && socket.userId) {
             console.log(`User ${socket.userId} left meeting ${socket.meetingId}`);
-            socket.to(socket.meetingId).emit('user-disconnected', { userId: socket.userId });
-
             const meeting = meetings[socket.meetingId];
+            let userName = '';
+
+            if (meeting && meeting.participants[socket.userId]) {
+                userName = meeting.participants[socket.userId].name;
+            }
+
+            socket.to(socket.meetingId).emit('user-disconnected', { userId: socket.userId, name: userName });
+
             if (meeting && meeting.participants[socket.userId]) {
                 const participant = meeting.participants[socket.userId];
 
