@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tensorflow-models/handpose": "^0.1.0",
+    "@tensorflow/tfjs": "^4.22.0",
     "@types/socket.io-client": "^1.4.36",
     "axios": "^1.13.2",
     "emoji-picker-react": "^4.16.1",
+    "fingerpose": "^0.1.0",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",

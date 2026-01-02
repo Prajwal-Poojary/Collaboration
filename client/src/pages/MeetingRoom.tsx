@@ -4,7 +4,8 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil, Pin, PinOff } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil, Pin, PinOff, Hand } from 'lucide-react';
+import GestureController from '../components/GestureController';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
 
@@ -112,6 +113,59 @@ const MeetingRoom = () => {
 
     // Pin State
     const [pinnedUserId, setPinnedUserId] = useState<string | null>(null);
+
+    // Gesture Control State
+    const [isGestureEnabled, setIsGestureEnabled] = useState(false);
+
+    const handleGestureDetect = (gestureName: string) => {
+        console.log("Gesture Detected in Parent:", gestureName);
+        if (gestureName === 'thumbs_up') {
+            // Send thumbs up emoji
+            if (socket) {
+                socket.emit('send-message', {
+                    meetingId,
+                    text: '👍',
+                    senderId: user?._id,
+                    senderName: user?.name
+                });
+                showToast("Sent Thumbs Up reaction! 👍");
+            }
+        } else if (gestureName === 'open_palm') {
+            // Toggle Raise Hand (Assuming we have a raise hand feature, if not just toast for now)
+            // Or maybe just toggle Chat as a placeholder if no raise hand?
+            // "Raise Hand" isn't fully implemented in backend yet (no specific event), 
+            // but we can send a system message or just toast locally for demo.
+            // Let's send a textual message "✋ I have a question"
+            if (socket) {
+                socket.emit('send-message', {
+                    meetingId,
+                    text: '✋ I raised my hand!',
+                    senderId: user?._id,
+                    senderName: user?.name
+                });
+                showToast("Raised Hand! ✋");
+            }
+        } else if (gestureName === 'closed_fist') {
+            // Toggle Mute
+            toggleMic();
+            showToast(isMicOn ? "Muted via Gesture 🙊" : "Unmuted via Gesture 🎤");
+        } else if (gestureName === 'victory') {
+            // Toggle Video
+            toggleVideo();
+            showToast(isVideoOn ? "Camera Off via Gesture ✌️" : "Camera On via Gesture ✌️");
+        } else if (gestureName === 'ok_sign') {
+            // Send OK Reaction
+            if (socket) {
+                socket.emit('send-message', {
+                    meetingId,
+                    text: '👌',
+                    senderId: user?._id,
+                    senderName: user?.name
+                });
+                showToast("Sent OK reaction! 👌");
+            }
+        }
+    };
 
     const togglePin = (targetUserId: string) => {
         setPinnedUserId(prev => prev === targetUserId ? null : targetUserId);
@@ -1463,6 +1517,18 @@ const MeetingRoom = () => {
                         <Users size={22} />
                     </button>
 
+                    <button
+                        onClick={() => {
+                            if (!isGestureEnabled) showToast("Initializing Gesture Control... Please wait.");
+                            setIsGestureEnabled(!isGestureEnabled);
+                        }}
+                        className={`p-4 rounded-full transition-all duration-300 relative ${isGestureEnabled ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}
+                        title={isGestureEnabled ? "Disable Gestures" : "Enable Gestures"}
+                    >
+                        <Hand size={22} />
+                        {isGestureEnabled && <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+                    </button>
+
                     <div className="w-px h-10 bg-white/10 mx-2" />
 
                     <button onClick={leaveMeeting} className="p-4 rounded-full bg-red-500/80 hover:bg-red-600 text-white transition-all duration-300 shadow-lg shadow-red-500/20 group w-16 hover:w-32 flex items-center justify-center overflow-hidden">
@@ -1473,6 +1539,15 @@ const MeetingRoom = () => {
                     </button>
                 </div>
             </div>
+
+            {/* Gesture Controller (Invisible) */}
+            <GestureController
+                stream={stream}
+                isVideoOn={isVideoOn}
+                onGestureDetect={handleGestureDetect}
+                isEnabled={isGestureEnabled}
+                onModelLoaded={() => showToast("Gesture Control Ready! 👋")}
+            />
         </div>
     );
 };
