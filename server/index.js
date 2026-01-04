@@ -98,7 +98,8 @@ io.on('connection', (socket) => {
                 blockedUsers: new Set(), // Permanently banned
                 blockedUsers: new Set(), // Permanently banned
                 participants: {}, // { userId: { name, isOnline } }
-                whiteboardOwnerId: null // Track who owns the whiteboard
+                whiteboardOwnerId: null, // Track who owns the whiteboard
+                activeSpeakers: new Map() // { userId: { volume, timestamp } }
             };
             console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
         }
@@ -344,6 +345,13 @@ io.on('connection', (socket) => {
         socket.to(meetingId).emit('user-video-status', { userId, isVideoOn });
     });
 
+    socket.on('audio-level', ({ meetingId, userId, volume }) => {
+        const meeting = meetings[meetingId];
+        if (meeting && meeting.activeSpeakers) {
+            meeting.activeSpeakers.set(userId, { volume, timestamp: Date.now() });
+        }
+    });
+
     // --- WHITEBOARD EVENTS ---
     socket.on('start-whiteboard', ({ meetingId }) => {
         console.log(`Whiteboard request in ${meetingId} by ${socket.userId}`);
@@ -409,6 +417,42 @@ io.on('connection', (socket) => {
 
     // Cleanup on disconnect
     // Logic moved to disconnect handler but we should double check here if we need specific listeners
+
+    // Active Speaker Broadcaster Interval (This should ideal run per meeting or global loop)
+    // For simplicity, we can trigger it or have a global loop. 
+    // Let's attach a specific interval for the meeting if not exists, or just use a global set interval if we want.
+    // Given the structure, let's just create a global interval that iterates all meetings. 
+    // BUT we don't have a global loop easily here without keeping track of intervals.
+    // Let's lazy-init the interval on meeting creation? 
+    // No, `meetings` object is flat. We can iterate it.
+
+    // NOTE: In a real scalable app, use Redis or dedicated service.
+
+    // We'll insert the socket listener above. For the broadcast loop:
+    if (!global.activeSpeakerInterval) {
+        global.activeSpeakerInterval = setInterval(() => {
+            const now = Date.now();
+            for (const meetingId in meetings) {
+                const meeting = meetings[meetingId];
+                if (meeting.activeSpeakers && meeting.activeSpeakers.size > 0) {
+                    // Prune old speakers (> 2 seconds silence)
+                    for (const [uid, data] of meeting.activeSpeakers) {
+                        if (now - data.timestamp > 2000) {
+                            meeting.activeSpeakers.delete(uid);
+                        }
+                    }
+
+                    // Sort by volume
+                    const sorted = Array.from(meeting.activeSpeakers.entries())
+                        .sort((a, b) => b[1].volume - a[1].volume)
+                        .slice(0, 4) // Top 4
+                        .map(([uid]) => uid);
+
+                    io.to(meetingId).emit('active-speakers', { speakers: sorted });
+                }
+            }
+        }, 500); // Broadcast every 500ms
+    }
 
 
     socket.on('send-message', async ({ meetingId, text, file, senderId, senderName }) => {
