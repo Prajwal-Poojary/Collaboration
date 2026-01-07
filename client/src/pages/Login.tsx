@@ -84,6 +84,17 @@ const Login = () => {
                     </motion.div>
 
                     <motion.div
+                        initial={{ x: -20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ delay: 0.45 }}
+                        className="flex justify-end"
+                    >
+                        <Link to="/forgot-password" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+                            Forgot Password?
+                        </Link>
+                    </motion.div>
+
+                    <motion.div
                         initial={{ y: 20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: 0.5 }}

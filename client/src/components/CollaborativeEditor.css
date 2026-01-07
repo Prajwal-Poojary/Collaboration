@@ -1,0 +1,125 @@
+/* Cursor Container */
+.ql-cursor {
+    opacity: 1;
+    transition: transform 0.1s ease-out, opacity 0.3s ease-in-out;
+    pointer-events: none;
+    /* Let clicks pass through */
+    z-index: 1000;
+}
+
+/* The vertical blinking line (Caret) */
+.ql-cursor-caret {
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    top: 0;
+    left: 0;
+    /* Color handled by library */
+}
+
+/* The Name Label (Flag) */
+.ql-cursor-flag {
+    position: absolute;
+    top: -100%;
+    /* Position above line */
+    left: 0;
+    /* background-color: handled by library */
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px 4px 4px 0;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.2s;
+    user-select: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    transform: translateY(-4px);
+    /* Slight gap */
+}
+
+/* Selection Highlight */
+.ql-cursor-selection-block {
+    /* background-color: handled by library */
+    opacity: 0.2;
+    /* Light transparent color */
+}
+
+/* Animations for smoothness */
+.ql-cursor-caret-container {
+    transition: top 0.1s linear, left 0.1s linear;
+}
+
+/* --- Word-Like Editor Styles --- */
+
+/* Reset Quill Container Borders */
+.ql-container.ql-snow {
+    border: none !important;
+    font-family: 'Inter', sans-serif;
+    /* Match app font */
+    font-size: 16px;
+}
+
+.ql-toolbar.ql-snow {
+    border: none !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    /* Gray-200 */
+    background: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* The "Page" itself */
+.ql-editor {
+    min-height: 1056px;
+    /* A4 height approx */
+    padding: 48px 64px !important;
+    /* Word-like margins */
+    background-color: white;
+    line-height: 1.6;
+    /* Better readability */
+}
+
+/* Improve Typography defaults */
+.ql-editor h1 {
+    font-size: 2em;
+    font-weight: 800;
+    margin-bottom: 0.5em;
+}
+
+.ql-editor h2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin-bottom: 0.5em;
+}
+
+.ql-editor h3 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+}
+
+.ql-editor p {
+    margin-bottom: 1em;
+}
+
+/* Custom Scrollbar for the editor wrapper */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

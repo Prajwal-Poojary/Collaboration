@@ -8,6 +8,7 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, In
 import GestureController from '../components/GestureController';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
+import CollaborativeEditor from '../components/CollaborativeEditor';
 
 interface Peer {
     userId: string;
@@ -110,6 +111,7 @@ const MeetingRoom = () => {
     // Whiteboard State
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
     const [whiteboardOwnerId, setWhiteboardOwnerId] = useState<string | null>(null);
+    const [isDocOpen, setIsDocOpen] = useState(false);
     const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]); // userId list
 
     // Pin State
@@ -511,6 +513,15 @@ const MeetingRoom = () => {
                     setIsWhiteboardOpen(false);
                 });
 
+                newSocket.on('doc-started', () => {
+                    setIsDocOpen(true);
+                    showToast("Collaborative Document Opened");
+                });
+
+                newSocket.on('doc-stopped', () => {
+                    setIsDocOpen(false);
+                    showToast("Collaborative Document Closed");
+                });
             })
             .catch(err => console.error('Error accessing media:', err));
 
@@ -675,6 +686,8 @@ const MeetingRoom = () => {
     const toggleWhiteboard = () => {
         if (!socket) return;
 
+        if (isDocOpen) setIsDocOpen(false); // Close doc if opening whiteboard
+
         if (isWhiteboardOpen) {
             // Only owner can close it for everyone
             if (whiteboardOwnerId === user?._id) {
@@ -683,16 +696,37 @@ const MeetingRoom = () => {
                 }
             } else {
                 alert("Only the presenter (who started the whiteboard) can close it.");
-                // Optional: Allow hiding locally? "Others... can only watch".
-                // Requirement doesn't explicitly say they can't hide it, but usually "close" means stop session.
-                // For now, prevent "Stopping" session. Hiding locally isn't implemented in UI structure (it's an overlay/modal typically?)
-                // Looking at render (I need to check render below), it seems it might be an overlay. 
-                // If it's a modal, user might want to close their view. 
-                // But let's stick to "Only owner closes session".
             }
         } else {
             // Start becoming owner
             socket.emit('start-whiteboard', { meetingId });
+        }
+    };
+
+    const toggleDocument = () => {
+        if (isWhiteboardOpen) {
+            alert("Please close the whiteboard first.");
+            return;
+        }
+
+        console.log("Toggle Document clicked. Current state:", isDocOpen);
+
+        if (!socket) {
+            console.error("Socket not initialized");
+            alert("Connection not established. Please wait.");
+            return;
+        }
+
+        if (isDocOpen) {
+            // Close logic
+            if (confirm("Close document for all participants?")) {
+                setIsDocOpen(false); // Immediate local update
+                socket.emit('doc-stop', { meetingId });
+            }
+        } else {
+            // Open logic
+            setIsDocOpen(true); // Immediate local update
+            socket.emit('doc-start', { meetingId });
         }
     };
 
@@ -1536,8 +1570,23 @@ const MeetingRoom = () => {
                 )}
             </div>
 
+            {/* Document Editor Overlay */}
+            {isDocOpen && (
+                <div className="absolute inset-0 z-40 bg-gray-100 p-4 pt-20"> {/* pt-20 to clear top bar or just fill space */}
+                    <div className="h-full max-w-5xl mx-auto flex flex-col bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden relative">
+                        {/* Close button inside overlay */}
+                        <div className="absolute top-2 right-2 z-50">
+                            <button onClick={toggleDocument} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full text-gray-600" title="Close for everyone">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        {user && <CollaborativeEditor socket={socket} meetingId={meetingId || ''} user={user} />}
+                    </div>
+                </div>
+            )}
+
             {/* Control Bar */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30">
+            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50">
                 <div className="glass-panel px-8 py-4 rounded-full flex items-center gap-6 bg-black/40 border-white/10 shadow-2xl backdrop-blur-xl hover:scale-105 transition-transform duration-300">
                     <button onClick={toggleMic} className={`p-4 rounded-full transition-all duration-300 ${isMicOn ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30'}`}>
                         {isMicOn ? <Mic size={22} /> : <MicOff size={22} />}
@@ -1553,6 +1602,10 @@ const MeetingRoom = () => {
 
                     <button onClick={toggleWhiteboard} className={`p-4 rounded-full transition-all duration-300 ${isWhiteboardOpen ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`} title="Whiteboard">
                         <PenTool size={22} />
+                    </button>
+
+                    <button onClick={toggleDocument} className={`p-4 rounded-full transition-all duration-300 ${isDocOpen ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 hover:bg-blue-500 hover:text-white text-gray-300'}`} title="Collaborative Document">
+                        <FileText size={22} />
                     </button>
 
                     <button onClick={() => { setShowChat(!showChat); setShowParticipants(false); }} className={`p-4 rounded-full transition-all duration-300 relative ${showChat ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
@@ -1710,5 +1763,6 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
         </motion.div>
     );
 };
+
 
 export default MeetingRoom;

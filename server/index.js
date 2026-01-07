@@ -2,15 +2,18 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const Message = require('./models/Message');
+const Document = require('./models/Document');
 
 
-dotenv.config();
+const envPath = path.join(__dirname, '.env');
+dotenv.config({ path: envPath });
 
 connectDB();
 
@@ -21,7 +24,7 @@ app.use(cors());
 app.use(express.json());
 
 const multer = require('multer');
-const path = require('path');
+// Path already imported at top
 
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
@@ -413,6 +416,74 @@ io.on('connection', (socket) => {
             meeting.whiteboardElements = [];
             socket.to(meetingId).emit('wb-update-elements', []);
         }
+    });
+
+    // --- DOCUMENT EDITOR EVENTS ---
+
+    socket.on('get-document', async ({ meetingId }) => {
+        const meeting = meetings[meetingId];
+        if (meeting) {
+            // If there are other people in the meeting, ask them for the latest state (in-memory sync)
+            const otherSockets = await io.in(meetingId).fetchSockets();
+            const peer = otherSockets.find(s => s.userId !== socket.userId);
+
+            if (peer) {
+                // Ask peer for state
+                console.log(`Asking peer ${peer.userId} for doc state in ${meetingId}`);
+                io.to(peer.id).emit('doc-request-state', { requesterId: socket.id });
+            } else {
+                // Load from DB
+                try {
+                    let doc = await Document.findOne({ meetingId });
+                    if (!doc) {
+                        doc = await Document.create({ meetingId, content: '' });
+                    }
+                    socket.emit('doc-load', { content: doc.content });
+                } catch (err) {
+                    console.error('Error loading document:', err);
+                }
+            }
+        }
+    });
+
+    socket.on('doc-sync-state', ({ content, requesterId }) => {
+        // Peer provided state, forward to requester
+        io.to(requesterId).emit('doc-load', { content });
+    });
+
+    socket.on('send-changes', ({ meetingId, delta }) => {
+        // Broadcast changes to everyone else
+        socket.to(meetingId).emit('receive-changes', delta);
+    });
+
+    socket.on('save-document', async ({ meetingId, content }) => {
+        try {
+            await Document.findOneAndUpdate(
+                { meetingId },
+                { content, lastUpdated: new Date() },
+                { upsert: true, new: true }
+            );
+            // console.log('Document saved to DB');
+        } catch (err) {
+            console.error('Error saving document:', err);
+        }
+    });
+
+    socket.on('doc-start', ({ meetingId }) => {
+        io.to(meetingId).emit('doc-started');
+    });
+
+    socket.on('doc-stop', ({ meetingId }) => {
+        io.to(meetingId).emit('doc-stopped');
+    });
+
+    socket.on('cursor-change', ({ meetingId, range, userName, color }) => {
+        socket.to(meetingId).emit('cursor-update', {
+            userId: socket.userId,
+            userName,
+            range,
+            color
+        });
     });
 
     // Cleanup on disconnect
