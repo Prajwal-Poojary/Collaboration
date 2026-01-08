@@ -89,7 +89,7 @@ const Login = () => {
                         transition={{ delay: 0.45 }}
                         className="flex justify-end"
                     >
-                        <Link to="/forgot-password" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+                        <Link to="/forgot-password" state={{ email }} className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
                             Forgot Password?
                         </Link>
                     </motion.div>

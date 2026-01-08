@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom'; // Removed useNavigate as we might just show success message
+import { Link, useLocation } from 'react-router-dom'; // Removed useNavigate as we might just show success message
 import api from '../services/api';
 import { motion } from 'framer-motion';
 
 const ForgotPassword = () => {
-    const [email, setEmail] = useState('');
+    const location = useLocation();
+    const [email, setEmail] = useState(location.state?.email || '');
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
