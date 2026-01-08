@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
-const aiRoutes = require('./routes/aiRoutes');
+
 const Message = require('./models/Message');
 const Document = require('./models/Document');
 
@@ -28,7 +28,7 @@ const multer = require('multer');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
-app.use('/api/ai', aiRoutes);
+
 
 // Configure Multer for file uploads
 const storage = multer.diskStorage({
