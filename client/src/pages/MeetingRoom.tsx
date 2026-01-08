@@ -1588,60 +1588,112 @@ const MeetingRoom = () => {
                 </div>
             )}
 
-            {/* Control Bar */}
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-                <div className="glass-panel px-8 py-4 rounded-full flex items-center gap-6 bg-black/40 border-white/10 shadow-2xl backdrop-blur-xl hover:scale-105 transition-transform duration-300">
-                    <button onClick={toggleMic} className={`p-4 rounded-full transition-all duration-300 ${isMicOn ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30'}`}>
-                        {isMicOn ? <Mic size={22} /> : <MicOff size={22} />}
-                    </button>
+            {/* Modern Control Bar Dock */}
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-auto max-w-[90vw]">
+                {/* Main Dock Container */}
+                <div className="flex items-center gap-2 p-2 rounded-2xl bg-[#1a1a1a]/80 backdrop-blur-2xl border border-white/10 shadow-2xl transition-all duration-300 hover:bg-[#1a1a1a]/90 hover:border-white/20 hover:scale-[1.01]">
 
-                    <button onClick={toggleVideo} className={`p-4 rounded-full transition-all duration-300 ${isVideoOn ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30'}`}>
-                        {isVideoOn ? <Video size={22} /> : <VideoOff size={22} />}
-                    </button>
+                    {/* Media Controls Group */}
+                    <div className="flex items-center gap-1.5 p-1.5 bg-white/5 rounded-xl border border-white/5">
+                        <ControlBtn
+                            onClick={toggleMic}
+                            isActive={isMicOn}
+                            activeIcon={<Mic size={20} />}
+                            inactiveIcon={<MicOff size={20} />}
+                            activeClass="bg-gray-600/50 hover:bg-gray-500/50 text-white"
+                            inactiveClass="bg-red-500/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                            title={isMicOn ? "Mute Microphone" : "Unmute Microphone"}
+                        />
+                        <ControlBtn
+                            onClick={toggleVideo}
+                            isActive={isVideoOn}
+                            activeIcon={<Video size={20} />}
+                            inactiveIcon={<VideoOff size={20} />}
+                            activeClass="bg-gray-600/50 hover:bg-gray-500/50 text-white"
+                            inactiveClass="bg-red-500/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                            title={isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
+                        />
+                    </div>
 
-                    <button onClick={shareScreen} className="p-4 rounded-full bg-white/10 hover:bg-indigo-500 hover:text-white hover:shadow-lg hover:shadow-indigo-500/30 text-gray-300 transition-all duration-300" title="Share Screen">
-                        <Share size={22} />
-                    </button>
+                    <div className="w-px h-8 bg-white/10 mx-1" />
 
-                    <button onClick={toggleWhiteboard} className={`p-4 rounded-full transition-all duration-300 ${isWhiteboardOpen ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`} title="Whiteboard">
-                        <PenTool size={22} />
-                    </button>
+                    {/* Collaboration Group */}
+                    <div className="flex items-center gap-1.5">
+                        <ControlBtn
+                            onClick={shareScreen}
+                            icon={<Share size={20} />}
+                            activeClass="bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-500/20"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Share Screen"
+                            isActive={!!screenSharingId && screenSharingId === user?._id}
+                        />
+                        <ControlBtn
+                            onClick={toggleWhiteboard}
+                            isActive={isWhiteboardOpen}
+                            icon={<PenTool size={20} />}
+                            activeClass="bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Toggle Whiteboard"
+                        />
+                        <ControlBtn
+                            onClick={toggleDocument}
+                            isActive={isDocOpen}
+                            icon={<FileText size={20} />}
+                            activeClass="bg-blue-500 text-white shadow-lg shadow-blue-500/20"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Collaborative Document"
+                        />
+                    </div>
 
-                    <button onClick={toggleDocument} className={`p-4 rounded-full transition-all duration-300 ${isDocOpen ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 hover:bg-blue-500 hover:text-white text-gray-300'}`} title="Collaborative Document">
-                        <FileText size={22} />
-                    </button>
+                    <div className="w-px h-8 bg-white/10 mx-1" />
 
-                    <button onClick={() => { setShowChat(!showChat); setShowParticipants(false); }} className={`p-4 rounded-full transition-all duration-300 relative ${showChat ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
-                        <MessageSquare size={22} />
-                        {messages.length > 0 && !showChat && (
-                            <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-black" />
-                        )}
-                    </button>
+                    {/* Interactive Group */}
+                    <div className="flex items-center gap-1.5">
+                        <ControlBtn
+                            onClick={() => { setShowChat(!showChat); setShowParticipants(false); }}
+                            isActive={showChat}
+                            icon={<MessageSquare size={20} />}
+                            activeClass="bg-gray-700 text-white"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Chat"
+                            badge={messages.length > 0 && !showChat}
+                        />
+                        <ControlBtn
+                            onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); }}
+                            isActive={showParticipants}
+                            icon={<Users size={20} />}
+                            activeClass="bg-gray-700 text-white"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Participants"
+                        />
+                        <ControlBtn
+                            onClick={() => {
+                                if (!isGestureEnabled) showToast("Initializing Gesture Control... Please wait.");
+                                setIsGestureEnabled(!isGestureEnabled);
+                            }}
+                            isActive={isGestureEnabled}
+                            icon={<Hand size={20} />}
+                            activeIcon={<Hand size={20} className="text-emerald-400" />}
+                            activeClass="bg-emerald-500/20 text-emerald-300 border border-emerald-500/20"
+                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
+                            title="Gesture Controls"
+                        />
+                    </div>
 
-                    <button onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); }} className={`p-4 rounded-full transition-all duration-300 ${showParticipants ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}>
-                        <Users size={22} />
-                    </button>
+                    <div className="w-px h-8 bg-white/10 mx-1" />
 
+                    {/* End Call */}
                     <button
-                        onClick={() => {
-                            if (!isGestureEnabled) showToast("Initializing Gesture Control... Please wait.");
-                            setIsGestureEnabled(!isGestureEnabled);
-                        }}
-                        className={`p-4 rounded-full transition-all duration-300 relative ${isGestureEnabled ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-white/10 hover:bg-indigo-500 hover:text-white text-gray-300'}`}
-                        title={isGestureEnabled ? "Disable Gestures" : "Enable Gestures"}
+                        onClick={leaveMeeting}
+                        className="group flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white transition-all duration-300 border border-red-500/20 hover:border-red-500/50"
+                        title="Leave Meeting"
                     >
-                        <Hand size={22} />
-                        {isGestureEnabled && <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+                        <PhoneOff size={20} />
+                        <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-medium text-sm">
+                            End Call
+                        </span>
                     </button>
 
-                    <div className="w-px h-10 bg-white/10 mx-2" />
-
-                    <button onClick={leaveMeeting} className="p-4 rounded-full bg-red-500/80 hover:bg-red-600 text-white transition-all duration-300 shadow-lg shadow-red-500/20 group w-16 hover:w-32 flex items-center justify-center overflow-hidden">
-                        <div className="flex items-center gap-2">
-                            <PhoneOff size={24} className="flex-shrink-0" />
-                            <span className="hidden group-hover:block font-medium whitespace-nowrap text-sm">Leave</span>
-                        </div>
-                    </button>
                 </div>
             </div>
 
@@ -1767,5 +1819,33 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
     );
 };
 
+
+
+interface ControlBtnProps {
+    onClick: () => void;
+    isActive?: boolean;
+    icon?: React.ReactNode;
+    activeIcon?: React.ReactNode;
+    inactiveIcon?: React.ReactNode;
+    activeClass?: string;
+    inactiveClass?: string;
+    title?: string;
+    badge?: boolean;
+}
+
+const ControlBtn = ({ onClick, isActive, icon, activeIcon, inactiveIcon, activeClass, inactiveClass, title, badge }: ControlBtnProps) => {
+    return (
+        <button
+            onClick={onClick}
+            className={`p-3 rounded-xl transition-all duration-200 relative group flex items-center justify-center ${isActive ? activeClass : inactiveClass}`}
+            title={title}
+        >
+            {isActive ? (activeIcon || icon) : (inactiveIcon || icon)}
+            {badge && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#1a1a1a]" />
+            )}
+        </button>
+    );
+};
 
 export default MeetingRoom;
