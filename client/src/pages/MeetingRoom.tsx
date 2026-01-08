@@ -227,6 +227,7 @@ const MeetingRoom = () => {
     useEffect(() => {
         const newSocket = io('http://localhost:5000');
         setSocket(newSocket);
+        let localAudioInterval: ReturnType<typeof setInterval> | null = null; // Store interval for cleanup
 
         navigator.mediaDevices.getUserMedia({
             video: {
@@ -265,7 +266,8 @@ const MeetingRoom = () => {
                     }
                 };
                 // Check 10 times a second
-                const audioInterval = setInterval(checkAudioLevel, 100);
+                // Check 10 times a second
+                localAudioInterval = setInterval(checkAudioLevel, 100);
                 // Cleanup audio context on unmount? (Added to cleanup below if possible, or just let garbage collection handle it is risky but ok for now)
 
                 newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
@@ -526,6 +528,7 @@ const MeetingRoom = () => {
             .catch(err => console.error('Error accessing media:', err));
 
         return () => {
+            if (localAudioInterval) clearInterval(localAudioInterval);
             newSocket.disconnect();
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
