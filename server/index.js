@@ -80,10 +80,10 @@ const io = new Server(server, {
 const meetings = {}; // { meetingId: { adminId: string } }
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+
 
     socket.on('join-room', ({ meetingId, userId, name }) => {
-        console.log('DEBUG JOIN-ROOM:', { meetingId, userId, name });
+
         socket.join(meetingId);
         socket.join(userId);
 
@@ -104,7 +104,7 @@ io.on('connection', (socket) => {
                 whiteboardOwnerId: null, // Track who owns the whiteboard
                 activeSpeakers: new Map() // { userId: { volume, timestamp } }
             };
-            console.log(`Meeting ${meetingId} created by ${name} (${userId}) - ADMIN`);
+
         }
 
         const meeting = meetings[meetingId];
@@ -143,7 +143,7 @@ io.on('connection', (socket) => {
         const videoOffUsers = Array.from(meeting.videoOffUsers || []);
         socket.emit('room-role', { isAdmin, mutedUsers, videoOffUsers });
 
-        console.log(`User ${name} (${userId}) joined room ${meetingId}. Is Admin: ${isAdmin}`);
+
         socket.to(meetingId).emit('user-connected', { userId, name });
 
         // If whiteboard is active, tell the new user
@@ -168,7 +168,7 @@ io.on('connection', (socket) => {
     socket.on('kick-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} kicking ${targetUserId} from ${meetingId}`);
+
 
             // Add to Restricted list (needs approval to rejoin)
             if (!meeting.kickedUsers) meeting.kickedUsers = new Set();
@@ -183,7 +183,7 @@ io.on('connection', (socket) => {
     socket.on('admin-mute-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} hard muting ${targetUserId} in ${meetingId}`);
+
             if (!meeting.mutedUsers) meeting.mutedUsers = new Set();
             meeting.mutedUsers.add(targetUserId);
 
@@ -195,7 +195,7 @@ io.on('connection', (socket) => {
     socket.on('admin-unmute-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} hard unmuting ${targetUserId} in ${meetingId}`);
+
             if (meeting.mutedUsers) {
                 meeting.mutedUsers.delete(targetUserId);
             }
@@ -206,7 +206,7 @@ io.on('connection', (socket) => {
     socket.on('admin-stop-video', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} hard stopping video for ${targetUserId} in ${meetingId}`);
+
             if (!meeting.videoOffUsers) meeting.videoOffUsers = new Set();
             meeting.videoOffUsers.add(targetUserId);
 
@@ -217,7 +217,7 @@ io.on('connection', (socket) => {
     socket.on('admin-allow-video', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} allowing video for ${targetUserId} in ${meetingId}`);
+
             if (meeting.videoOffUsers) {
                 meeting.videoOffUsers.delete(targetUserId);
             }
@@ -230,7 +230,7 @@ io.on('connection', (socket) => {
     socket.on('admin-mute-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} hard muting ALL in ${meetingId}`);
+
 
             const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
             if (socketsInRoom) {
@@ -252,7 +252,7 @@ io.on('connection', (socket) => {
     socket.on('admin-unmute-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} hard unmuting ALL in ${meetingId}`);
+
             // We clear the set, or specifically remove everyone currently in the room?
             // "Unmute All" usually implies clearing restrictions.
             meeting.mutedUsers.clear();
@@ -263,7 +263,7 @@ io.on('connection', (socket) => {
     socket.on('admin-stop-video-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} stopping ALL video in ${meetingId}`);
+
 
             const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
             if (socketsInRoom) {
@@ -282,7 +282,7 @@ io.on('connection', (socket) => {
     socket.on('admin-allow-video-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
-            console.log(`Admin ${socket.userId} allowing ALL video in ${meetingId}`);
+
             meeting.videoOffUsers.clear();
             io.to(meetingId).emit('all-users-hard-video-allow');
         }
@@ -292,11 +292,11 @@ io.on('connection', (socket) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.adminId === socket.userId) {
             if (approved) {
-                console.log(`Admin APPROVED re-entry for ${targetUserId}`);
+
                 if (meeting.kickedUsers) meeting.kickedUsers.delete(targetUserId);
                 io.to(targetUserId).emit('entry-approved');
             } else {
-                console.log(`Admin DENIED re-entry for ${targetUserId}`);
+
                 if (meeting.kickedUsers) meeting.kickedUsers.delete(targetUserId);
                 if (!meeting.blockedUsers) meeting.blockedUsers = new Set();
                 meeting.blockedUsers.add(targetUserId);
@@ -307,7 +307,7 @@ io.on('connection', (socket) => {
 
     socket.on('offer', (data) => {
         // ... (existing logic)
-        console.log(`Relaying OFFER from ${data.sender} to ${data.target}`);
+
         socket.to(data.target).emit('offer', {
             offer: data.offer,
             sender: data.sender,
@@ -317,7 +317,7 @@ io.on('connection', (socket) => {
 
     socket.on('answer', (data) => {
         // ... (existing logic)
-        console.log(`Relaying ANSWER from ${data.sender} to ${data.target}`);
+
         socket.to(data.target).emit('answer', {
             answer: data.answer,
             sender: data.sender
@@ -326,7 +326,7 @@ io.on('connection', (socket) => {
 
     socket.on('ice-candidate', (data) => {
         // ... (existing logic)
-        console.log(`Relaying ICE CANDIDATE from ${data.sender} to ${data.target}`);
+
         socket.to(data.target).emit('ice-candidate', {
             candidate: data.candidate,
             sender: data.sender
@@ -334,17 +334,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('start-screen-share', ({ meetingId, userId }) => {
-        console.log(`User ${userId} started screen sharing in ${meetingId}`);
+
         socket.to(meetingId).emit('user-started-sharing', { userId });
     });
 
     socket.on('stop-screen-share', ({ meetingId, userId }) => {
-        console.log(`User ${userId} stopped screen sharing in ${meetingId}`);
+
         socket.to(meetingId).emit('user-stopped-sharing', { userId });
     });
 
     socket.on('video-status-change', ({ meetingId, userId, isVideoOn }) => {
-        console.log(`User ${userId} video status changed to ${isVideoOn}`);
+
         socket.to(meetingId).emit('user-video-status', { userId, isVideoOn });
     });
 
@@ -357,7 +357,7 @@ io.on('connection', (socket) => {
 
     // --- WHITEBOARD EVENTS ---
     socket.on('start-whiteboard', ({ meetingId }) => {
-        console.log(`Whiteboard request in ${meetingId} by ${socket.userId}`);
+
         const meeting = meetings[meetingId];
         if (meeting) {
             // If already open, just join? Or exclusive?
@@ -370,7 +370,7 @@ io.on('connection', (socket) => {
 
             if (!meeting.whiteboardOwnerId) {
                 meeting.whiteboardOwnerId = socket.userId;
-                console.log(`Whiteboard started. Owner: ${socket.userId}`);
+
             }
 
             // Broadcast to everyone (including sender so they know they are owner)
@@ -385,11 +385,11 @@ io.on('connection', (socket) => {
     socket.on('stop-whiteboard', ({ meetingId }) => {
         const meeting = meetings[meetingId];
         if (meeting && meeting.whiteboardOwnerId === socket.userId) {
-            console.log(`Whiteboard stopped in ${meetingId} by owner ${socket.userId}`);
+
             meeting.whiteboardOwnerId = null;
             io.to(meetingId).emit('whiteboard-stopped');
         } else {
-            console.log(`User ${socket.userId} attempted to stop whiteboard but is not owner.`);
+
         }
     });
 
@@ -429,7 +429,7 @@ io.on('connection', (socket) => {
 
             if (peer) {
                 // Ask peer for state
-                console.log(`Asking peer ${peer.userId} for doc state in ${meetingId}`);
+
                 io.to(peer.id).emit('doc-request-state', { requesterId: socket.id });
             } else {
                 // Load from DB
@@ -463,7 +463,7 @@ io.on('connection', (socket) => {
                 { content, lastUpdated: new Date() },
                 { upsert: true, new: true }
             );
-            // console.log('Document saved to DB');
+
         } catch (err) {
             console.error('Error saving document:', err);
         }
@@ -564,9 +564,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+
         if (socket.meetingId && socket.userId) {
-            console.log(`User ${socket.userId} left meeting ${socket.meetingId}`);
+
             const meeting = meetings[socket.meetingId];
             let userName = '';
 
@@ -598,7 +598,7 @@ io.on('connection', (socket) => {
 
                 // If owner left, close whiteboard?
                 if (meeting.whiteboardOwnerId === socket.userId) {
-                    console.log(`Whiteboard owner ${socket.userId} left. Closing whiteboard.`);
+
                     meeting.whiteboardOwnerId = null;
                     io.to(socket.meetingId).emit('whiteboard-stopped');
                 }
@@ -610,7 +610,7 @@ io.on('connection', (socket) => {
             const room = io.sockets.adapter.rooms.get(socket.meetingId);
             if (!room || room.size === 0) {
                 delete meetings[socket.meetingId];
-                console.log(`Meeting ${socket.meetingId} ended and cleaned up.`);
+
             }
         }
     });

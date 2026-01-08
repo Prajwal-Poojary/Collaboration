@@ -71,7 +71,7 @@ const MeetingRoom = () => {
     const { user } = useContext(AuthContext)!;
     const navigate = useNavigate();
 
-    console.log("MeetingRoom Params:", { meetingId, user });
+
 
     const [socket, setSocket] = useState<any | null>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
@@ -121,7 +121,7 @@ const MeetingRoom = () => {
     const [isGestureEnabled, setIsGestureEnabled] = useState(false);
 
     const handleGestureDetect = (gestureName: string) => {
-        console.log("Gesture Detected in Parent:", gestureName);
+
         if (gestureName === 'thumbs_up') {
             // Send thumbs up emoji
             if (socket) {
@@ -183,7 +183,7 @@ const MeetingRoom = () => {
     }, [stream]);
 
     const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string) => {
-        console.log(`Creating PeerConnection for ${targetUserId}`);
+
         const peerConnection = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -202,7 +202,7 @@ const MeetingRoom = () => {
         };
 
         peerConnection.ontrack = (event) => {
-            console.log('Received track from', targetUserId);
+
             setPeers(prev => {
                 if (!prev.find(p => p.userId === targetUserId)) {
                     return [...prev, { userId: targetUserId, stream: event.streams[0], name }];
@@ -266,7 +266,7 @@ const MeetingRoom = () => {
                     }
                 };
                 // Check 10 times a second
-                // Check 10 times a second
+
                 localAudioInterval = setInterval(checkAudioLevel, 100);
                 // Cleanup audio context on unmount? (Added to cleanup below if possible, or just let garbage collection handle it is risky but ok for now)
 
@@ -356,9 +356,7 @@ const MeetingRoom = () => {
                     // Optional: Play a sound
                 });
 
-                newSocket.on('admin-muted', () => {
-                    // Legacy/Fallback
-                });
+
 
                 // --- GLOBAL UPDATES (Mute All / Video All) ---
                 newSocket.on('all-users-hard-muted', ({ mutedUsers }: { mutedUsers: string[] }) => {
@@ -413,7 +411,7 @@ const MeetingRoom = () => {
                 });
 
                 newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
-                    console.log('User connected event received:', userId);
+
                     const peerConnection = createPeerConnection(userId, newSocket, name);
                     peerConnection.createOffer().then(offer => {
                         peerConnection.setLocalDescription(offer);
@@ -427,7 +425,7 @@ const MeetingRoom = () => {
                 });
 
                 newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
-                    console.log('Received Offer from', sender);
+
                     const peerConnection = createPeerConnection(sender, newSocket, name);
                     await peerConnection.setRemoteDescription(offer);
                     const answer = await peerConnection.createAnswer();
@@ -464,12 +462,12 @@ const MeetingRoom = () => {
                 });
 
                 newSocket.on('user-started-sharing', ({ userId }: { userId: string }) => {
-                    console.log('User started sharing:', userId);
+
                     setScreenSharingId(userId);
                 });
 
                 newSocket.on('user-stopped-sharing', () => {
-                    console.log('User stopped sharing');
+
                     setScreenSharingId(null);
                 });
 
@@ -481,7 +479,7 @@ const MeetingRoom = () => {
                     if (name) {
                         showToast(`${name} has left the meeting`);
                     }
-                    console.log('User disconnected:', userId);
+
                     if (peersRef.current[userId]) {
                         peersRef.current[userId].close();
                         delete peersRef.current[userId];
@@ -504,13 +502,13 @@ const MeetingRoom = () => {
 
                 // --- WHITEBOARD LISTENERS ---
                 newSocket.on('whiteboard-started', ({ ownerId }: { ownerId: string }) => {
-                    console.log('Whiteboard started by', ownerId);
+
                     setWhiteboardOwnerId(ownerId);
                     setIsWhiteboardOpen(true);
                 });
 
                 newSocket.on('whiteboard-stopped', () => {
-                    console.log('Whiteboard stopped');
+
                     setWhiteboardOwnerId(null);
                     setIsWhiteboardOpen(false);
                 });
@@ -712,7 +710,7 @@ const MeetingRoom = () => {
             return;
         }
 
-        console.log("Toggle Document clicked. Current state:", isDocOpen);
+
 
         if (!socket) {
             console.error("Socket not initialized");
@@ -1743,7 +1741,7 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
         return () => clearInterval(interval);
     }, [stream]);
 
-    // ... rest of component
+
 
     // Generate random color from name
     const getInitials = (name?: string) => name ? name.charAt(0).toUpperCase() : '?';
