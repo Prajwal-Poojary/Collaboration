@@ -72,9 +72,12 @@ const forgotPassword = async (req, res) => {
         const user = await User.findOne({ email });
 
         if (!user) {
+            console.log(`DEBUG: User with email ${email} NOT FOUND in database.`);
             // Security: Don't reveal if user exists. Return success message logic.
             return res.status(200).json({ data: 'If an account with that email exists, we have sent a reset link.' });
         }
+
+        console.log(`DEBUG: User found: ${user.email}. Generating reset token...`);
 
         // Get reset token
         const resetToken = user.getResetPasswordToken();
