@@ -281,288 +281,289 @@ const MeetingRoom = () => {
                         newSocket.emit('audio-level', { meetingId, userId: user?._id, volume: rms });
                     }
                 };
-                // Check 10 times a second
 
                 localAudioInterval = setInterval(checkAudioLevel, 100);
+            })
+            .catch(err => {
+                console.error('Error accessing media:', err);
+                showToast("Media access denied. You can still use chat.");
+            });
 
-                console.log('[Socket] Sending join-room for', user?.name);
-                newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
+        // --- REGISTER SOCKET LISTENERS IMMEDIATELY ---
+        newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[] }) => {
+            setIsAdmin(isAdmin);
+            if (mutedUsers) setHardMutedUsers(mutedUsers);
+            if (videoOffUsers) setHardVideoOffUsers(videoOffUsers);
+        });
 
-                newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[] }) => {
-                    setIsAdmin(isAdmin);
-                    if (mutedUsers) {
-                        setHardMutedUsers(mutedUsers);
-                    }
-                    if (videoOffUsers) {
-                        setHardVideoOffUsers(videoOffUsers);
-                    }
-                });
+        newSocket.on('kicked', () => {
+            alert('You have been kicked from the meeting.');
+            navigate('/dashboard');
+        });
 
-                newSocket.on('kicked', () => {
-                    alert('You have been kicked from the meeting.');
-                    navigate('/dashboard');
-                });
-
-                newSocket.on('user-hard-muted', ({ userId }: { userId: string }) => {
-                    setHardMutedUsers(prev => [...prev, userId]);
-                    if (user?._id === userId) {
-                        setIsMicOn(false);
-                        if (streamRef.current) {
-                            streamRef.current.getAudioTracks().forEach(track => {
-                                track.enabled = false;
-                            });
-                        }
-                        alert('You have been muted by the host.');
-                    }
-                });
-
-                newSocket.on('user-hard-unmuted', ({ userId }: { userId: string }) => {
-                    setHardMutedUsers(prev => prev.filter(id => id !== userId));
-                    if (user?._id === userId) {
-                        alert('The host has unmuted you. You can now use your microphone.');
-                    }
-                });
-
-                newSocket.on('user-hard-video-off', ({ userId }: { userId: string }) => {
-                    setHardVideoOffUsers(prev => [...prev, userId]);
-                    if (user?._id === userId) {
-                        setIsVideoOn(false);
-                        if (streamRef.current) {
-                            streamRef.current.getVideoTracks().forEach(track => {
-                                track.enabled = false;
-                            });
-                        }
-                        if (socket) {
-                            socket.emit('video-status-change', {
-                                meetingId,
-                                userId: user?._id,
-                                isVideoOn: false
-                            });
-                        }
-                        setVideoStatus(prev => ({ ...prev, [userId]: false }));
-                        alert('Your camera has been disabled by the host.');
-                    }
-                });
-
-                newSocket.on('user-hard-video-allow', ({ userId }: { userId: string }) => {
-                    setHardVideoOffUsers(prev => prev.filter(id => id !== userId));
-                    if (user?._id === userId) {
-                        alert('The host has allowed your camera. You can now turn it on.');
-                    }
-                });
-
-                // --- RESTRICTED ENTRY LISTENERS ---
-                newSocket.on('entry-pending', () => {
-                    setIsWaitingForApproval(true);
-                });
-
-                newSocket.on('entry-denied', ({ reason }: { reason: string }) => {
-                    alert(reason || 'Access denied.');
-                    navigate('/dashboard');
-                });
-
-                newSocket.on('entry-approved', () => {
-                    setIsWaitingForApproval(false);
-                    // Re-attempt join logic now that we are approved
-                    newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
-                });
-
-                newSocket.on('entry-request', (request: { userId: string; name: string }) => {
-                    setEntryRequests(prev => [...prev, request]);
-                    // Optional: Play a sound
-                });
-
-
-
-                // --- GLOBAL UPDATES (Mute All / Video All) ---
-                newSocket.on('all-users-hard-muted', ({ mutedUsers }: { mutedUsers: string[] }) => {
-                    setHardMutedUsers(mutedUsers); // Sync list
-                    // If I am in the list (which I should be if not admin), mute me
-                    if (mutedUsers.includes(user?._id || '')) {
-                        setIsMicOn(false);
-                        if (streamRef.current) {
-                            streamRef.current.getAudioTracks().forEach(track => {
-                                track.enabled = false;
-                            });
-                        }
-                        alert('Host has muted everyone.');
-                    } else if (isAdmin) {
-                        showToast("Everyone has been muted.");
-                    }
-                });
-
-                newSocket.on('all-users-hard-unmuted', () => {
-                    setHardMutedUsers([]);
-                    if (!isAdmin) alert('Host has unmuted everyone. You can now use your microphone.');
-                    if (isAdmin) showToast("Everyone has been unmuted.");
-                });
-
-                newSocket.on('all-users-hard-video-off', ({ videoOffUsers }: { videoOffUsers: string[] }) => {
-                    setHardVideoOffUsers(videoOffUsers);
-                    if (videoOffUsers.includes(user?._id || '')) {
-                        setIsVideoOn(false);
-                        if (streamRef.current) {
-                            streamRef.current.getVideoTracks().forEach(track => {
-                                track.enabled = false;
-                            });
-                        }
-                        if (socket) {
-                            socket.emit('video-status-change', {
-                                meetingId,
-                                userId: user?._id,
-                                isVideoOn: false
-                            });
-                        }
-                        setVideoStatus(prev => ({ ...prev, [user?._id || '']: false }));
-                        alert('Host has disabled everyone\'s camera.');
-                    } else if (isAdmin) {
-                        showToast("Everyone's camera has been disabled.");
-                    }
-                });
-
-                newSocket.on('all-users-hard-video-allow', () => {
-                    setHardVideoOffUsers([]);
-                    if (!isAdmin) alert('Host has allowed everyone\'s camera.');
-                    if (isAdmin) showToast("Everyone's camera access enabled.");
-                });
-
-                newSocket.on('user-connected', async ({ userId, name }: UserConnectedPayload) => {
-                    const peerConnection = createPeerConnection(userId, newSocket, name, initialStream);
-                    try {
-                        const offer = await peerConnection.createOffer();
-                        await peerConnection.setLocalDescription(offer);
-                        newSocket.emit('offer', {
-                            target: userId,
-                            offer: offer,
-                            sender: user?._id,
-                            name: user?.name
-                        });
-                    } catch (err) {
-                        console.error('Error creating offer:', err);
-                    }
-                });
-
-                newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
-                    const peerConnection = createPeerConnection(sender, newSocket, name, initialStream);
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-                    // Add buffered candidates if any
-                    if (candidateBuffer.current[sender]) {
-                        candidateBuffer.current[sender].forEach(async (cand) => {
-                            await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
-                        });
-                        delete candidateBuffer.current[sender];
-                    }
-
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    newSocket.emit('answer', {
-                        target: sender,
-                        answer: answer,
-                        sender: user?._id
+        // ... Rest of the listeners ...
+        newSocket.on('user-hard-muted', ({ userId }: { userId: string }) => {
+            setHardMutedUsers(prev => [...prev, userId]);
+            if (user?._id === userId) {
+                setIsMicOn(false);
+                if (streamRef.current) {
+                    streamRef.current.getAudioTracks().forEach(track => {
+                        track.enabled = false;
                     });
-                });
+                }
+                alert('You have been muted by the host.');
+            }
+        });
 
-                newSocket.on('answer', async ({ answer, sender }: AnswerPayload) => {
-                    const peerConnection = peersRef.current[sender];
-                    if (peerConnection) {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        newSocket.on('user-hard-unmuted', ({ userId }: { userId: string }) => {
+            setHardMutedUsers(prev => prev.filter(id => id !== userId));
+            if (user?._id === userId) {
+                alert('The host has unmuted you. You can now use your microphone.');
+            }
+        });
 
-                        // Add buffered candidates if any
-                        if (candidateBuffer.current[sender]) {
-                            candidateBuffer.current[sender].forEach(async (cand) => {
-                                await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
-                            });
-                            delete candidateBuffer.current[sender];
-                        }
-                    }
-                });
-
-                newSocket.on('ice-candidate', async ({ candidate, sender }: IceCandidatePayload) => {
-                    const peerConnection = peersRef.current[sender];
-                    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error("Error adding ice candidate", e));
-                    } else {
-                        // Buffer candidates if remote description is not yet set
-                        if (!candidateBuffer.current[sender]) candidateBuffer.current[sender] = [];
-                        candidateBuffer.current[sender].push(new RTCIceCandidate(candidate));
-                    }
-                });
-
-                newSocket.on('receive-message', (message: ChatMessage) => {
-                    setMessages(prev => [...prev, message]);
-                });
-
-                newSocket.on('message-edited', ({ messageId, newText }: { messageId: string, newText: string }) => {
-                    setMessages(prev => prev.map(msg =>
-                        msg._id === messageId ? { ...msg, text: newText, isEdited: true } : msg
-                    ));
-                });
-
-                newSocket.on('user-started-sharing', ({ userId }: { userId: string }) => {
-
-                    setScreenSharingId(userId);
-                });
-
-                newSocket.on('user-stopped-sharing', () => {
-
-                    setScreenSharingId(null);
-                });
-
-                newSocket.on('active-speakers', ({ speakers }: { speakers: string[] }) => {
-                    setActiveSpeakers(speakers);
-                });
-
-                newSocket.on('user-disconnected', ({ userId, name }: { userId: string, name?: string }) => {
-                    if (name) {
-                        showToast(`${name} has left the meeting`);
-                    }
-
-                    if (peersRef.current[userId]) {
-                        peersRef.current[userId].close();
-                        delete peersRef.current[userId];
-                    }
-                    setPeers(prev => prev.filter(p => p.userId !== userId));
-                    setVideoStatus(prev => {
-                        const newStatus = { ...prev };
-                        delete newStatus[userId];
-                        return newStatus;
+        newSocket.on('user-hard-video-off', ({ userId }: { userId: string }) => {
+            setHardVideoOffUsers(prev => [...prev, userId]);
+            if (user?._id === userId) {
+                setIsVideoOn(false);
+                if (streamRef.current) {
+                    streamRef.current.getVideoTracks().forEach(track => {
+                        track.enabled = false;
                     });
+                }
+                if (socket) {
+                    socket.emit('video-status-change', {
+                        meetingId,
+                        userId: user?._id,
+                        isVideoOn: false
+                    });
+                }
+                setVideoStatus(prev => ({ ...prev, [userId]: false }));
+                alert('Your camera has been disabled by the host.');
+            }
+        });
+
+        newSocket.on('user-hard-video-allow', ({ userId }: { userId: string }) => {
+            setHardVideoOffUsers(prev => prev.filter(id => id !== userId));
+            if (user?._id === userId) {
+                alert('The host has allowed your camera. You can now turn it on.');
+            }
+        });
+
+        newSocket.on('entry-pending', () => {
+            setIsWaitingForApproval(true);
+        });
+
+        newSocket.on('entry-denied', ({ reason }: { reason: string }) => {
+            alert(reason || 'Access denied.');
+            navigate('/dashboard');
+        });
+
+        newSocket.on('entry-approved', () => {
+            setIsWaitingForApproval(false);
+            newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
+        });
+
+        newSocket.on('entry-request', (request: { userId: string; name: string }) => {
+            setEntryRequests(prev => [...prev, request]);
+        });
+
+        newSocket.on('all-users-hard-muted', ({ mutedUsers }: { mutedUsers: string[] }) => {
+            setHardMutedUsers(mutedUsers);
+            if (mutedUsers.includes(user?._id || '')) {
+                setIsMicOn(false);
+                if (streamRef.current) {
+                    streamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
+                }
+                alert('Host has muted everyone.');
+            } else if (isAdmin) {
+                showToast("Everyone has been muted.");
+            }
+        });
+
+        newSocket.on('all-users-hard-unmuted', () => {
+            setHardMutedUsers([]);
+            if (!isAdmin) alert('Host has unmuted everyone. You can now use your microphone.');
+            if (isAdmin) showToast("Everyone has been unmuted.");
+        });
+
+        newSocket.on('all-users-hard-video-off', ({ videoOffUsers }: { videoOffUsers: string[] }) => {
+            setHardVideoOffUsers(videoOffUsers);
+            if (videoOffUsers.includes(user?._id || '')) {
+                setIsVideoOn(false);
+                if (streamRef.current) {
+                    streamRef.current.getVideoTracks().forEach(track => { track.enabled = false; });
+                }
+                setVideoStatus(prev => ({ ...prev, [user?._id || '']: false }));
+                alert('Host has disabled everyone\'s camera.');
+            } else if (isAdmin) {
+                showToast("Everyone's camera has been disabled.");
+            }
+        });
+
+        newSocket.on('all-users-hard-video-allow', () => {
+            setHardVideoOffUsers([]);
+            if (!isAdmin) alert('Host has allowed everyone\'s camera.');
+            if (isAdmin) showToast("Everyone's camera access enabled.");
+        });
+
+        const handleUserConnected = async ({ userId, name }: UserConnectedPayload) => {
+            console.log(`[Socket] User connected: ${name} (${userId})`);
+            const peerConnection = createPeerConnection(userId, newSocket, name);
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                newSocket.emit('offer', { target: userId, offer, sender: user?._id, name: user?.name });
+            } catch (err) { console.error('Error creating offer:', err); }
+        };
+
+        newSocket.on('user-connected', handleUserConnected);
+
+        newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
+            console.log(`[WebRTC] Received offer from ${name} (${sender})`);
+            const peerConnection = createPeerConnection(sender, newSocket, name);
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+            if (candidateBuffer.current[sender]) {
+                candidateBuffer.current[sender].forEach(async (cand) => {
+                    await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
                 });
+                delete candidateBuffer.current[sender];
+            }
 
-                newSocket.on('user-video-status', ({ userId, isVideoOn }: { userId: string, isVideoOn: boolean }) => {
-                    setVideoStatus(prev => ({ ...prev, [userId]: isVideoOn }));
-                });
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            newSocket.emit('answer', { target: sender, answer, sender: user?._id });
+        });
 
-                newSocket.on('participants-list', (list: Participant[]) => {
-                    console.log('[Socket] Received participants list:', list);
-                    setAllParticipants(list);
-                });
+        newSocket.on('answer', async ({ answer, sender }: AnswerPayload) => {
+            const peerConnection = peersRef.current[sender];
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                if (candidateBuffer.current[sender]) {
+                    candidateBuffer.current[sender].forEach(async (cand) => {
+                        await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
+                    });
+                    delete candidateBuffer.current[sender];
+                }
+            }
+        });
 
-                // --- WHITEBOARD LISTENERS ---
-                newSocket.on('whiteboard-started', ({ ownerId }: { ownerId: string }) => {
+        newSocket.on('ice-candidate', async ({ candidate, sender }: IceCandidatePayload) => {
+            const peerConnection = peersRef.current[sender];
+            if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error("Error adding ice candidate", e));
+            } else {
+                if (!candidateBuffer.current[sender]) candidateBuffer.current[sender] = [];
+                candidateBuffer.current[sender].push(new RTCIceCandidate(candidate));
+            }
+        });
 
-                    setWhiteboardOwnerId(ownerId);
-                    setIsWhiteboardOpen(true);
-                });
+        newSocket.on('receive-message', (message: ChatMessage) => {
+            setMessages(prev => [...prev, message]);
+        });
 
-                newSocket.on('whiteboard-stopped', () => {
+        newSocket.on('message-edited', ({ messageId, newText }: { messageId: string, newText: string }) => {
+            setMessages(prev => prev.map(msg => msg._id === messageId ? { ...msg, text: newText, isEdited: true } : msg));
+        });
 
-                    setWhiteboardOwnerId(null);
-                    setIsWhiteboardOpen(false);
-                });
+        newSocket.on('user-started-sharing', ({ userId }: { userId: string }) => {
+            setScreenSharingId(userId);
+        });
 
-                newSocket.on('doc-started', () => {
-                    setIsDocOpen(true);
-                    showToast("Collaborative Document Opened");
-                });
+        newSocket.on('user-stopped-sharing', () => {
+            setScreenSharingId(null);
+        });
 
-                newSocket.on('doc-stopped', () => {
-                    setIsDocOpen(false);
-                    showToast("Collaborative Document Closed");
+        newSocket.on('active-speakers', ({ speakers }: { speakers: string[] }) => {
+            setActiveSpeakers(speakers);
+        });
+
+        newSocket.on('user-disconnected', ({ userId, name }: { userId: string, name?: string }) => {
+            console.log(`[Socket] Event: user-disconnected for ${name} (${userId})`);
+            if (name) {
+                showToast(`${name} has left the meeting`);
+            }
+
+            if (peersRef.current[userId]) {
+                peersRef.current[userId].close();
+                delete peersRef.current[userId];
+            }
+            setPeers(prev => prev.filter(p => p.userId !== userId));
+            setVideoStatus(prev => {
+                const newStatus = { ...prev };
+                delete newStatus[userId];
+                return newStatus;
+            });
+        });
+
+        newSocket.on('user-video-status', ({ userId, isVideoOn }: { userId: string, isVideoOn: boolean }) => {
+            setVideoStatus(prev => ({ ...prev, [userId]: isVideoOn }));
+        });
+
+        newSocket.on('participants-list', (list: Participant[]) => {
+            console.log('[Socket] Received participants list:', list);
+            setAllParticipants(list);
+        });
+
+        newSocket.on('whiteboard-started', ({ ownerId }: { ownerId: string }) => {
+            setWhiteboardOwnerId(ownerId);
+            setIsWhiteboardOpen(true);
+        });
+
+        newSocket.on('whiteboard-stopped', () => {
+            setWhiteboardOwnerId(null);
+            setIsWhiteboardOpen(false);
+        });
+
+        newSocket.on('doc-started', () => {
+            setIsDocOpen(true);
+            showToast("Collaborative Document Opened");
+        });
+
+        newSocket.on('doc-stopped', () => {
+            setIsDocOpen(false);
+            showToast("Collaborative Document Closed");
+        });
+
+        // JOIN ROOM IMMEDIATELY
+        console.log('[Socket] Emitting join-room for', user?.name);
+        newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
+
+        // Media Setup
+        navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        })
+            .then((initialStream) => {
+                setStream(initialStream);
+                const audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(initialStream);
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const pcmData = new Float32Array(analyser.fftSize);
+                const checkAudioLevel = () => {
+                    analyser.getFloatTimeDomainData(pcmData);
+                    let sumSquares = 0.0;
+                    for (const amplitude of pcmData) { sumSquares += amplitude * amplitude; }
+                    const rms = Math.sqrt(sumSquares / pcmData.length);
+                    if (rms > 0.02) {
+                        newSocket.emit('audio-level', { meetingId, userId: user?._id, volume: rms });
+                    }
+                };
+                localAudioInterval = setInterval(checkAudioLevel, 100);
+
+                // Update existing peer connections with the stream
+                Object.values(peersRef.current).forEach(pc => {
+                    initialStream.getTracks().forEach(track => pc.addTrack(track, initialStream));
                 });
             })
-            .catch(err => console.error('Error accessing media:', err));
+            .catch(err => {
+                console.error('Error accessing media:', err);
+                showToast("Media access denied. You can still use chat.");
+            });
 
         return () => {
             if (localAudioInterval) clearInterval(localAudioInterval);

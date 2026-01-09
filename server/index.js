@@ -82,7 +82,8 @@ const meetings = {}; // { meetingId: { adminId: string } }
 io.on('connection', (socket) => {
 
 
-    socket.on('join-room', ({ meetingId, userId, name }) => {
+    socket.on('join-room', ({ meetingId: rawMeetingId, userId, name }) => {
+        const meetingId = rawMeetingId?.trim().toLowerCase();
         console.log(`[Socket] User ${userId} (${name}) attempting to join room ${meetingId}. Socket ID: ${socket.id}`);
 
         socket.join(meetingId);
@@ -594,7 +595,6 @@ io.on('connection', (socket) => {
                     userId: id,
                     name: p.name,
                     isOnline: p.isOnline,
-                    totalDuration: p.totalDuration,
                     totalDuration: p.totalDuration,
                     lastJoinTime: p.lastJoinTime
                 })));
