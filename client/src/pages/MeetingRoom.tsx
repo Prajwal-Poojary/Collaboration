@@ -225,7 +225,7 @@ const MeetingRoom = () => {
     };
 
     useEffect(() => {
-        const newSocket = io(`http://${window.location.hostname}:5000`);
+        const newSocket = io('/');
         setSocket(newSocket);
         let localAudioInterval: ReturnType<typeof setInterval> | null = null; // Store interval for cleanup
 
@@ -759,7 +759,7 @@ const MeetingRoom = () => {
             formData.append('file', file);
 
             try {
-                const response = await axios.post(`http://${window.location.hostname}:5000/api/upload`, formData, {
+                const response = await axios.post('/api/upload', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                     onUploadProgress: (progressEvent) => {
                         const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || file.size));
