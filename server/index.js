@@ -83,6 +83,7 @@ io.on('connection', (socket) => {
 
 
     socket.on('join-room', ({ meetingId, userId, name }) => {
+        console.log(`[Socket] User ${userId} (${name}) attempting to join room ${meetingId}. Socket ID: ${socket.id}`);
 
         socket.join(meetingId);
         socket.join(userId);
@@ -99,7 +100,7 @@ io.on('connection', (socket) => {
                 videoOffUsers: new Set(),
                 kickedUsers: new Set(), // Restricted (needs approval)
                 blockedUsers: new Set(), // Permanently banned
-                blockedUsers: new Set(), // Permanently banned
+                whiteboardElements: [], // Initialize whiteboard state
                 participants: {}, // { userId: { name, isOnline } }
                 whiteboardOwnerId: null, // Track who owns the whiteboard
                 activeSpeakers: new Map() // { userId: { volume, timestamp } }
@@ -145,6 +146,7 @@ io.on('connection', (socket) => {
 
 
         socket.to(meetingId).emit('user-connected', { userId, name });
+        console.log(`[Socket] user-connected emitted to room ${meetingId} for user ${userId}`);
 
         // If whiteboard is active, tell the new user
         if (meeting.whiteboardOwnerId) {
@@ -306,7 +308,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('offer', (data) => {
-        // ... (existing logic)
+        console.log(`[WebRTC] Offer from ${data.sender} to ${data.target}`);
 
         socket.to(data.target).emit('offer', {
             offer: data.offer,
@@ -564,6 +566,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        console.log(`[Socket] Disconnected: ${socket.id}. Was in meeting: ${socket.meetingId}`);
 
         if (socket.meetingId && socket.userId) {
 

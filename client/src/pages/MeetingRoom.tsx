@@ -99,6 +99,7 @@ const MeetingRoom = () => {
     const streamRef = useRef<MediaStream | null>(null);
     const [screenSharingId, setScreenSharingId] = useState<string | null>(null);
     const [videoStatus, setVideoStatus] = useState<{ [key: string]: boolean }>({});
+    const candidateBuffer = useRef<{ [key: string]: RTCIceCandidate[] }>({});
 
     // Message Editing State
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -182,7 +183,7 @@ const MeetingRoom = () => {
         }
     }, [stream]);
 
-    const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string) => {
+    const createPeerConnection = (targetUserId: string, socketToUse: any, name?: string, explicitStream?: MediaStream) => {
 
         const peerConnection = new RTCPeerConnection({
             iceServers: [
@@ -211,12 +212,11 @@ const MeetingRoom = () => {
             });
         };
 
-        // Add local tracks - ALWAYS use the current stream from ref
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => {
-                if (streamRef.current) {
-                    peerConnection.addTrack(track, streamRef.current);
-                }
+        // Add local tracks
+        const currentStream = explicitStream || streamRef.current;
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, currentStream);
             });
         }
 
@@ -225,9 +225,25 @@ const MeetingRoom = () => {
     };
 
     useEffect(() => {
-        const newSocket = io('/');
+        const newSocket = io('/', {
+            transports: ['websocket', 'polling'],
+            secure: window.location.protocol === 'https:',
+            reconnectionAttempts: 5,
+            timeout: 10000
+        });
         setSocket(newSocket);
-        let localAudioInterval: ReturnType<typeof setInterval> | null = null; // Store interval for cleanup
+
+        newSocket.on('connect', () => {
+            console.log('[Socket] Connected to server. Socket ID:', newSocket.id);
+            showToast("Connected to meeting server");
+        });
+
+        newSocket.on('connect_error', (error: any) => {
+            console.error('[Socket] Connection Error:', error);
+            showToast("Connection error. Retrying...");
+        });
+
+        let localAudioInterval: ReturnType<typeof setInterval> | null = null;
 
         navigator.mediaDevices.getUserMedia({
             video: {
@@ -268,8 +284,8 @@ const MeetingRoom = () => {
                 // Check 10 times a second
 
                 localAudioInterval = setInterval(checkAudioLevel, 100);
-                // Cleanup audio context on unmount? (Added to cleanup below if possible, or just let garbage collection handle it is risky but ok for now)
 
+                console.log('[Socket] Sending join-room for', user?.name);
                 newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
 
                 newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[] }) => {
@@ -410,24 +426,34 @@ const MeetingRoom = () => {
                     if (isAdmin) showToast("Everyone's camera access enabled.");
                 });
 
-                newSocket.on('user-connected', ({ userId, name }: UserConnectedPayload) => {
-
-                    const peerConnection = createPeerConnection(userId, newSocket, name);
-                    peerConnection.createOffer().then(offer => {
-                        peerConnection.setLocalDescription(offer);
+                newSocket.on('user-connected', async ({ userId, name }: UserConnectedPayload) => {
+                    const peerConnection = createPeerConnection(userId, newSocket, name, initialStream);
+                    try {
+                        const offer = await peerConnection.createOffer();
+                        await peerConnection.setLocalDescription(offer);
                         newSocket.emit('offer', {
                             target: userId,
                             offer: offer,
                             sender: user?._id,
                             name: user?.name
                         });
-                    }).catch(err => console.error('Error creating offer:', err));
+                    } catch (err) {
+                        console.error('Error creating offer:', err);
+                    }
                 });
 
                 newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
+                    const peerConnection = createPeerConnection(sender, newSocket, name, initialStream);
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
 
-                    const peerConnection = createPeerConnection(sender, newSocket, name);
-                    await peerConnection.setRemoteDescription(offer);
+                    // Add buffered candidates if any
+                    if (candidateBuffer.current[sender]) {
+                        candidateBuffer.current[sender].forEach(async (cand) => {
+                            await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
+                        });
+                        delete candidateBuffer.current[sender];
+                    }
+
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
                     newSocket.emit('answer', {
@@ -440,14 +466,26 @@ const MeetingRoom = () => {
                 newSocket.on('answer', async ({ answer, sender }: AnswerPayload) => {
                     const peerConnection = peersRef.current[sender];
                     if (peerConnection) {
-                        await peerConnection.setRemoteDescription(answer);
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+
+                        // Add buffered candidates if any
+                        if (candidateBuffer.current[sender]) {
+                            candidateBuffer.current[sender].forEach(async (cand) => {
+                                await peerConnection.addIceCandidate(cand).catch(e => console.error("Error adding buffered candidate", e));
+                            });
+                            delete candidateBuffer.current[sender];
+                        }
                     }
                 });
 
                 newSocket.on('ice-candidate', async ({ candidate, sender }: IceCandidatePayload) => {
                     const peerConnection = peersRef.current[sender];
-                    if (peerConnection) {
-                        await peerConnection.addIceCandidate(candidate);
+                    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.error("Error adding ice candidate", e));
+                    } else {
+                        // Buffer candidates if remote description is not yet set
+                        if (!candidateBuffer.current[sender]) candidateBuffer.current[sender] = [];
+                        candidateBuffer.current[sender].push(new RTCIceCandidate(candidate));
                     }
                 });
 
@@ -497,6 +535,7 @@ const MeetingRoom = () => {
                 });
 
                 newSocket.on('participants-list', (list: Participant[]) => {
+                    console.log('[Socket] Received participants list:', list);
                     setAllParticipants(list);
                 });
 

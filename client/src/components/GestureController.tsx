@@ -99,7 +99,14 @@ const GestureController: React.FC<GestureControllerProps> = ({ stream, isVideoOn
     useEffect(() => {
         if (stream && videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(e => console.error("Error playing invisible video", e));
+            // Check if playing to avoid AbortError: The play() request was interrupted by a new load request.
+            if (videoRef.current.paused) {
+                videoRef.current.play().catch(e => {
+                    if (e.name !== 'AbortError') {
+                        console.error("Error playing invisible video", e);
+                    }
+                });
+            }
         }
     }, [stream]);
 
