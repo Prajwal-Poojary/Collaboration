@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
@@ -29,6 +30,12 @@ const multer = require('multer');
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+}
 
 // Configure Multer for file uploads
 const storage = multer.diskStorage({

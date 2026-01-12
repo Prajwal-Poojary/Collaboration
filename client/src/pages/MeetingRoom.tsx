@@ -526,21 +526,17 @@ const MeetingRoom = () => {
             showToast("Collaborative Document Closed");
         });
 
-        // JOIN ROOM IMMEDIATELY
-        console.log('[Socket] Emitting join-room for', user?.name);
-        newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
-
-        // Media Setup
+        // Media Setup - Join room ONLY after success or failure of media
         navigator.mediaDevices.getUserMedia({
             video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
             .then((initialStream) => {
                 setStream(initialStream);
+                streamRef.current = initialStream; // Update Ref immediately to avoid React state update race condition
                 const audioContext = new AudioContext();
                 const source = audioContext.createMediaStreamSource(initialStream);
                 const analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
                 source.connect(analyser);
 
                 const pcmData = new Float32Array(analyser.fftSize);
@@ -555,14 +551,22 @@ const MeetingRoom = () => {
                 };
                 localAudioInterval = setInterval(checkAudioLevel, 100);
 
-                // Update existing peer connections with the stream
+                // Update existing peer connections with the stream (if any existed, though none should yet)
                 Object.values(peersRef.current).forEach(pc => {
                     initialStream.getTracks().forEach(track => pc.addTrack(track, initialStream));
                 });
+
+                // JOIN ROOM NOW that we have a stream
+                console.log('[Socket] Media acquired. Emitting join-room for', user?.name);
+                newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
             })
             .catch(err => {
                 console.error('Error accessing media:', err);
                 showToast("Media access denied. You can still use chat.");
+
+                // JOIN ROOM ANYWAY (Audio/Video-less)
+                console.log('[Socket] Media failed. Emitting join-room without media for', user?.name);
+                newSocket.emit('join-room', { meetingId, userId: user?._id, name: user?.name });
             });
 
         return () => {
