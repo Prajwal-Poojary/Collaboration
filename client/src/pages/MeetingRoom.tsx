@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil, Pin, PinOff, Hand, SignalHigh, SignalLow, SignalMedium } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, Info, Copy, Check, X, Smile, Paperclip, FileText, Download, Shield, PenTool, Pencil, Pin, PinOff, Hand, SignalHigh, SignalLow, SignalMedium, Crown } from 'lucide-react';
 import GestureController from '../components/GestureController';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
@@ -290,8 +290,9 @@ const MeetingRoom = () => {
             });
 
         // --- REGISTER SOCKET LISTENERS IMMEDIATELY ---
-        newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[] }) => {
+        newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers, adminId }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[], adminId?: string }) => {
             setIsAdmin(isAdmin);
+            if (adminId) setHostId(adminId);
             if (mutedUsers) setHardMutedUsers(mutedUsers);
             if (videoOffUsers) setHardVideoOffUsers(videoOffUsers);
         });
@@ -481,15 +482,25 @@ const MeetingRoom = () => {
 
         newSocket.on('user-disconnected', ({ userId, name }: { userId: string, name?: string }) => {
             console.log(`[Socket] Event: user-disconnected for ${name} (${userId})`);
-            if (name) {
-                showToast(`${name} has left the meeting`);
-            }
 
+            // Notification with fallback
+            const displayName = name || 'A participant';
+            showToast(`${displayName} has left the meeting`);
+
+            // Cleanup WebRTC Peer
             if (peersRef.current[userId]) {
                 peersRef.current[userId].close();
                 delete peersRef.current[userId];
             }
+
+            // Cleanup State
             setPeers(prev => prev.filter(p => p.userId !== userId));
+
+            // Clear specific states if they match the disconnected user
+            setScreenSharingId(prev => prev === userId ? null : prev);
+            setPinnedUserId(prev => prev === userId ? null : prev);
+            setWhiteboardOwnerId(prev => prev === userId ? null : prev);
+
             setVideoStatus(prev => {
                 const newStatus = { ...prev };
                 delete newStatus[userId];
@@ -939,6 +950,7 @@ const MeetingRoom = () => {
     }, [showEmojiPicker]);
 
     const [isAdmin, setIsAdmin] = useState(false);
+    const [hostId, setHostId] = useState<string | null>(null);
     const [hardMutedUsers, setHardMutedUsers] = useState<string[]>([]);
     const [hardVideoOffUsers, setHardVideoOffUsers] = useState<string[]>([]);
 
@@ -970,6 +982,13 @@ const MeetingRoom = () => {
     const adminAllowVideo = (targetUserId: string) => {
         if (socket && isAdmin) {
             socket.emit('admin-allow-video', { meetingId, targetUserId });
+        }
+    };
+
+    const promoteToWiseAdmin = (targetUserId: string) => {
+        if (socket && isAdmin) {
+            socket.emit('promote-wise-admin', { meetingId, targetUserId });
+            showToast("Promoted user to Wise Admin");
         }
     };
 
@@ -1557,7 +1576,7 @@ const MeetingRoom = () => {
                                                 )}
                                             </div>
 
-                                            {isAdmin && !isMe && participant.isOnline && (
+                                            {isAdmin && !isMe && participant.isOnline && participant.userId !== hostId && (
                                                 <div className="flex gap-2 mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                     {/* Mic Control */}
                                                     {hardMutedUsers.includes(participant.userId) ? (
@@ -1603,6 +1622,14 @@ const MeetingRoom = () => {
                                                         title="Kick User"
                                                     >
                                                         <X size={14} />
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => promoteToWiseAdmin(participant.userId)}
+                                                        className="p-1.5 bg-yellow-500/10 hover:bg-yellow-500 text-yellow-500 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                        title="Make Wise Admin"
+                                                    >
+                                                        <Crown size={14} />
                                                     </button>
                                                 </div>
                                             )}

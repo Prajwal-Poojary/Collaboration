@@ -104,6 +104,7 @@ io.on('connection', (socket) => {
         if (!meetings[meetingId]) {
             meetings[meetingId] = {
                 adminId: userId,
+                wiseAdmins: new Set(), // Set of userIds who are Wise Admins
                 mutedUsers: new Set(),
                 videoOffUsers: new Set(),
                 kickedUsers: new Set(), // Restricted (needs approval)
@@ -147,10 +148,10 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const isAdmin = meeting.adminId === userId;
+        const isAdmin = meeting.adminId === userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(userId));
         const mutedUsers = Array.from(meeting.mutedUsers || []);
         const videoOffUsers = Array.from(meeting.videoOffUsers || []);
-        socket.emit('room-role', { isAdmin, mutedUsers, videoOffUsers });
+        socket.emit('room-role', { isAdmin, mutedUsers, videoOffUsers, adminId: meeting.adminId });
 
 
         socket.to(meetingId).emit('user-connected', { userId, name });
@@ -177,7 +178,10 @@ io.on('connection', (socket) => {
 
     socket.on('kick-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        // Authorization: Admin OR Wise Admin
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+
+        if (isAuthorized) {
 
 
             // Add to Restricted list (needs approval to rejoin)
@@ -192,7 +196,9 @@ io.on('connection', (socket) => {
 
     socket.on('admin-mute-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
+            if (targetUserId === meeting.adminId) return;
 
             if (!meeting.mutedUsers) meeting.mutedUsers = new Set();
             meeting.mutedUsers.add(targetUserId);
@@ -204,7 +210,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-unmute-user', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
             if (meeting.mutedUsers) {
                 meeting.mutedUsers.delete(targetUserId);
@@ -215,7 +222,9 @@ io.on('connection', (socket) => {
 
     socket.on('admin-stop-video', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
+            if (targetUserId === meeting.adminId) return;
 
             if (!meeting.videoOffUsers) meeting.videoOffUsers = new Set();
             meeting.videoOffUsers.add(targetUserId);
@@ -226,7 +235,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-allow-video', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
             if (meeting.videoOffUsers) {
                 meeting.videoOffUsers.delete(targetUserId);
@@ -239,7 +249,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-mute-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
 
             const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
@@ -261,7 +272,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-unmute-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
             // We clear the set, or specifically remove everyone currently in the room?
             // "Unmute All" usually implies clearing restrictions.
@@ -272,7 +284,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-stop-video-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
 
             const socketsInRoom = io.sockets.adapter.rooms.get(meetingId);
@@ -291,7 +304,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-allow-video-all', ({ meetingId }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
 
             meeting.videoOffUsers.clear();
             io.to(meetingId).emit('all-users-hard-video-allow');
@@ -300,7 +314,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-response-entry', ({ meetingId, targetUserId, approved }) => {
         const meeting = meetings[meetingId];
-        if (meeting && meeting.adminId === socket.userId) {
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        if (isAuthorized) {
             if (approved) {
 
                 if (meeting.kickedUsers) meeting.kickedUsers.delete(targetUserId);
@@ -570,6 +585,37 @@ io.on('connection', (socket) => {
             }
         } catch (error) {
             console.error('Error editing message:', error);
+        }
+    });
+
+    // --- WISE ADMIN HANDLERS ---
+    socket.on('promote-wise-admin', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+
+        if (isAuthorized) {
+            if (!meeting.wiseAdmins) meeting.wiseAdmins = new Set();
+            meeting.wiseAdmins.add(targetUserId);
+
+            // Notify the target user so they get admin controls
+            const mutedUsers = Array.from(meeting.mutedUsers || []);
+            const videoOffUsers = Array.from(meeting.videoOffUsers || []);
+            io.to(targetUserId).emit('room-role', { isAdmin: true, mutedUsers, videoOffUsers });
+        }
+    });
+
+    socket.on('demote-wise-admin', ({ meetingId, targetUserId }) => {
+        const meeting = meetings[meetingId];
+        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+
+        if (isAuthorized) {
+            if (meeting.wiseAdmins) {
+                meeting.wiseAdmins.delete(targetUserId);
+
+                const mutedUsers = Array.from(meeting.mutedUsers || []);
+                const videoOffUsers = Array.from(meeting.videoOffUsers || []);
+                io.to(targetUserId).emit('room-role', { isAdmin: false, mutedUsers, videoOffUsers });
+            }
         }
     });
 
