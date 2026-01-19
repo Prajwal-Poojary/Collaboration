@@ -591,7 +591,8 @@ io.on('connection', (socket) => {
     // --- WISE ADMIN HANDLERS ---
     socket.on('promote-wise-admin', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        // Authorization: MAIN HOST ONLY
+        const isAuthorized = meeting && (meeting.adminId === socket.userId);
 
         if (isAuthorized) {
             if (!meeting.wiseAdmins) meeting.wiseAdmins = new Set();
@@ -606,7 +607,8 @@ io.on('connection', (socket) => {
 
     socket.on('demote-wise-admin', ({ meetingId, targetUserId }) => {
         const meeting = meetings[meetingId];
-        const isAuthorized = meeting && (meeting.adminId === socket.userId || (meeting.wiseAdmins && meeting.wiseAdmins.has(socket.userId)));
+        // Authorization: MAIN HOST ONLY
+        const isAuthorized = meeting && (meeting.adminId === socket.userId);
 
         if (isAuthorized) {
             if (meeting.wiseAdmins) {

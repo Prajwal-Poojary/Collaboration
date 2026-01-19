@@ -254,7 +254,10 @@ const MeetingRoom = () => {
             audio: {
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: true,
+                sampleRate: 48000, // High fidelity audio
+                sampleSize: 16,
+                channelCount: 1
             }
         })
             .then((initialStream) => {
@@ -540,7 +543,14 @@ const MeetingRoom = () => {
         // Media Setup - Join room ONLY after success or failure of media
         navigator.mediaDevices.getUserMedia({
             video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000,
+                sampleSize: 16,
+                channelCount: 1
+            }
         })
             .then((initialStream) => {
                 setStream(initialStream);
@@ -988,7 +998,7 @@ const MeetingRoom = () => {
     const promoteToWiseAdmin = (targetUserId: string) => {
         if (socket && isAdmin) {
             socket.emit('promote-wise-admin', { meetingId, targetUserId });
-            showToast("Promoted user to Wise Admin");
+            showToast("Promoted user to Co-Host");
         }
     };
 
@@ -1624,13 +1634,16 @@ const MeetingRoom = () => {
                                                         <X size={14} />
                                                     </button>
 
-                                                    <button
-                                                        onClick={() => promoteToWiseAdmin(participant.userId)}
-                                                        className="p-1.5 bg-yellow-500/10 hover:bg-yellow-500 text-yellow-500 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
-                                                        title="Make Wise Admin"
-                                                    >
-                                                        <Crown size={14} />
-                                                    </button>
+                                                    {/* Co-Host Promotion - ONLY VISIBLE TO MAIN HOST */}
+                                                    {user?._id === hostId && (
+                                                        <button
+                                                            onClick={() => promoteToWiseAdmin(participant.userId)}
+                                                            className="p-1.5 bg-yellow-500/10 hover:bg-yellow-500 text-yellow-500 hover:text-white rounded-lg transition-colors text-xs flex items-center gap-1"
+                                                            title="Make Co-Host"
+                                                        >
+                                                            <Crown size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
