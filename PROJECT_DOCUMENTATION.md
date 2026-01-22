@@ -1,145 +1,213 @@
+# ⚡ Collaborative Meeting Platform - Engineering Report
 
-# ⚡ Collaborative Meeting Platform - Project Documentation
+> **Project Status**: Active Development 🟢  
+> **Version**: 1.0.0
 
-## 1. 🚀 Project Overview
+## 1. 📖 Abstract & Introduction
 
-This project is a cutting-edge real-time collaboration and video conferencing platform designed to go beyond simple video calls. It integrates advanced features like **AI-powered gesture control**, **collaborative code/text editing**, **interactive whiteboards**, and **smart meeting management** into a single, cohesive interface. 
+This project is a state-of-the-art **Real-Time Collaboration & Video Conferencing System** designed to bridge the gap between communication and co-creation. Unlike traditional platforms (Zoom, Google Meet) that segregate communication tools, this platform integrates **AI-powered interaction**, **collaborative document editing**, and **interactive whiteboarding** directly into the video interface.
 
-The application is built with a "Privacy First" mesh architecture for video (WebRTC) and a robust centralized signaling server for real-time state management.
+The system utilizes a **Mesh Peer-to-Peer Architecture** for low-latency video streaming and a centralized **Event-Driven Signaling Server** to manage complex meeting states. It features a modern, glassmorphic UI designed for an immersive user experience.
 
-## 2. 🆚 Comparison: Why is this different?
+---
 
-| Feature | 🦖 Traditional (Zoom/Meet) | ⚡ This Platform |
-| :--- | :--- | :--- |
-| **Interaction** | Buttons & Hotkeys | **AI Hand Gestures** (👍 = Emoji, ✋ = Raise Hand) |
-| **Collaboration** | Screen Share only | **In-Meeting Real-time Editor** (Quill) & **Whiteboard** |
-| **Visuals** | Basic/Corporate | **Premium Glassmorphism** & Dynamic Animations |
-| **Architecture** | SFU/MCU (Server Heavy) | **Mesh WebRTC** (Peer-to-Peer, Lower Latency) |
-| **Customization** | Limited | **Fully Customizable** Open Source Logic |
+## 2. 🏗️ System Architecture
 
-## 3. 🛠️ Tech Stack & Unique Libraries
-
-### Frontend (Client)
-A high-performance Single Page Application (SPA).
-
-*   **Core**: React 19, TypeScript, Vite (Build Tool).
-*   **Styling**: **Hybrid Approach**. Uses `TailwindCSS` v4 for utility classes combined with extensive **Custom CSS Variables** and **Glassmorphism** effects (see `index.css`).
-*   **Real-time Communication**:
-    *   `socket.io-client`: For chat, whiteboard state, and signaling.
-    *   **WebRTC**: Native browser API for peer-to-peer audio/video streaming.
-*   **AI & Machine Learning (Unique Feature)**:
-    *   `@tensorflow/tfjs` & `@tensorflow-models/handpose`: Runs neural networks directly in the browser to detect hands.
-    *   `fingerpose`: Analyzes hand landmarks to recognize specific gestures (Thumbs Up, Victory, Open Palm).
-*   **Collaboration Tools**:
-    *   `quill` & `quill-cursors`: Rich text editor with real-time multi-user cursor tracking.
-    *   `framer-motion`: For fluid UI animations (floating elements, page transitions).
-    *   `emoji-picker-react`: Integrated emoji support.
-    *   `lucide-react`: Modern icon set.
-
-### Backend (Server)
-A robust Node.js environment handling signaling and persistence.
-
-*   **Runtime**: Node.js & Express.js.
-*   **Real-time Engine**: `socket.io`: Handles thousands of events for chat updates, drawing coordinates, and WebRTC signaling (Offers/Answers/ICE Candidates).
-*   **Database**: **MongoDB** (with Mongoose) for storing:
-    *   User Profiles.
-    *   Meeting Metadata.
-    *   Chat History (likely).
-*   **Security**:
-    *   `bcryptjs`: Password hashing.
-    *   `jsonwebtoken` (JWT): Stateless authentication.
-    *   `helmet`: HTTP header security.
-    *   `cors`: Cross-Origin Resource Sharing management.
-*   **Utilities**:
-    *   `multer`: Handling file uploads locally (`/uploads` directory).
-    *   `nodemailer`: Sending system emails (e.g., Forgot Password).
-
-## 4. 🔮 Key Features Breakdown
-
-### A. 🤖 AI Gesture Controller
-*   **How it works**: Uses the user's webcam feed (separate from the meeting stream) to run a background tensor flow model.
-*   **Triggers**:
-    *   **Thumbs Up**: Sends a "👍" reaction to the room.
-    *   **Open Palm**: Toggles "Raise Hand" status.
-    *   **Victory/Peace**: Toggles Video On/Off.
-    *   **OK Sign**: Custom reaction.
-
-### B. 📝 Collaborative Workspace
-*   **Whiteboard**: A shared canvas where all users can draw simultaneously. Changes are broadcast via Socket.IO events (`draw-line`, `clear-canvas`).
-*   **Editor**: A shared document editor. Users can type together, seeing each other's color-coded cursors in real-time.
-
-### C. 📹 Smart Video Meeting
-*   **Mesh Network**: Users connect directly to every other user. If 4 people are in a call, each person maintains 3 separate peer connections.
-*   **Features**:
-    *   Screen Sharing.
-    *   Dynamic Grid Layout.
-    *   Audio Level Detection (Visualizers).
-
-### D. 👑 Admin Controls
-*   The meeting creator (Admin) has special privileges:
-    *   **Kick User**: Remove someone from the meeting.
-    *   **Mute Everyone**: Force mute participants.
-    *   **Stop Video**: Disable a user's camera.
-
-## 5. 📐 Architecture & Workflow
+### 2.1 High-Level Architecture
+The system follows a hybrid Client-Server model. Video/Audio streams are transmitted directly between peers (Mesh WebRTC), while application state (Chat, Whiteboard, Auth) is synchronized via a central server.
 
 ```mermaid
 graph TD
-    subgraph Client [User Browser]
-        UI[React UI]
-        TF[TensorFlow.js Model]
-        RTC[WebRTC Manager]
-        Socket[Socket.IO Client]
+    subgraph Client ["Client Layer (React + Vite)"]
+        UI[User Interface]
+        localStream[Local Media Stream]
+        
+        subgraph Logic ["Logic Modules"]
+            RTCEngine[WebRTC Mesh Manager]
+            SocketMgr[Socket.IO Client]
+            TFModel[TensorFlow Gesture AI]
+        end
     end
 
-    subgraph Server [Node.js Backend]
-        API[Express API]
-        Signal[Socket.IO Server]
+    subgraph Server ["Server Layer (Node.js)"]
+        Signal[Signaling Server]
+        REST[REST API]
         DB[(MongoDB)]
         Storage[File Storage]
     end
 
-    %% User Flow
-    User -->|1. Login/Register| API
-    API -->|Verify| DB
-    API -->|Token| UI
+    UI --> RTCEngine
+    UI --> SocketMgr
+    UI --> TFModel
 
-    %% Meeting Flow
-    UI -->|2. Join Room| Signal
-    Signal -->|3. Map Socket to User| Signal
-    
-    %% Connections
-    UI -- 4. P2P Video/Audio Stream --> OtherUsers[Other Participants]
-    
-    %% Feature Flows
-    TF -- Analyzes Video Frame --> UI
-    UI -- "Gesture Detected" --> Signal
-    
-    UI -- "Draw/Type" --> Signal
-    Signal -- Broadcast Updates --> OtherUsers
+    RTCEngine <-->|P2P Media Stream| Peer1[Peer Client]
+    RTCEngine <-->|P2P Media Stream| Peer2[Peer Client]
+
+    SocketMgr <-->|Events: Join, Offer, Answer| Signal
+    REST <-->|HTTP: Auth, Metadata| DB
 ```
 
-## 6. 📂 Project Structure Guide
+### 2.2 Signaling Sequence Diagram
+The following diagram illustrates the complex flow required to establish a connection between two users joining a meeting.
 
-*   **`client/src/pages/MeetingRoom.tsx`**: The heart of the application. Manages the complex state of streams, peers, and socket events.
-*   **`client/src/components/GestureController.tsx`**: Encapsulated logic for loading TF models and processing video frames.
-*   **`server/index.js`**: Main entry point. Contains the massive Socket.IO event handler for all real-time logic.
-*   **`server/models`**: Database schemas (`User.js`, `Meeting.js`).
-*   **`client/src/index.css`**: The definition of the "Glassmorphism" design system.
+```mermaid
+sequenceDiagram
+    participant UserA as User A (Joiner)
+    participant Server as Signaling Server
+    participant UserB as User B (Host/Peer)
+
+    UserA->>Server: emit(join-room, {meetingId, userId})
+    Server->>UserB: emit(user-connected, {userId})
+    
+    rect rgb(20, 20, 20)
+    note right of UserB: WebRTC Handshake Initiated
+    UserB->>UserB: createOffer()
+    UserB->>Server: emit(offer, {offer, target: UserA})
+    Server->>UserA: emit(offer, {offer, sender: UserB})
+    
+    UserA->>UserA: createAnswer()
+    UserA->>Server: emit(answer, {answer, target: UserB})
+    Server->>UserB: emit(answer, {answer, sender: UserA})
+    
+    loop ICE Candidates
+        UserB->>Server: emit(ice-candidate)
+        Server->>UserA: emit(ice-candidate)
+    end
+    end
+    
+    UserA<-->>UserB: P2P Audio/Video Stream Established 🟢
+```
+
+---
+
+## 3. 🛠️ Technology Stack
+
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Frontend** | **React 19** | Component-based UI Architecture. |
+| | **TypeScript** | Type safety and robust code structure. |
+| | **TailwindCSS v4** | Utility-first styling with Glassmorphism support. |
+| | **Vite** | Next-generation frontend tooling and bundler. |
+| **Real-Time** | **WebRTC** | Native browser API for peer-to-peer media streaming. |
+| | **Socket.IO** | Bi-directional event-based communication. |
+| **AI / ML** | **TensorFlow.js** | Browser-side machine learning runtime. |
+| | **Fingerpose** | Hand landmark detection and gesture classification. |
+| **Backend** | **Node.js + Express** | Scalable server runtime and REST API framework. |
+| **Database** | **MongoDB** | NoSQL database for flexible content storage. |
+
+---
+
+## 4. 💾 Database Schema Design
+
+The application uses MongoDB to store persistent data. Below are the core schemas.
+
+### 4.1 User Schema (`users`)
+Stores authentication and profile details.
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `name` | String | Yes | Full name of the user. |
+| `email` | String | Yes | Unique email address (Index). |
+| `password` | String | Yes | Bcrypt hashed password. |
+| `role` | Enum | No | `host` or `participant` (Default: `participant`). |
+| `resetPasswordToken` | String | No | Hashed token for password recovery. |
+
+### 4.2 Meeting Schema (`meetings`)
+Manages meeting sessions and history.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `meetingId` | String | Unique readable ID for the room. |
+| `host` | ObjectId | Reference to the `User` who created it. |
+| `title` | String | Custom title for the meeting. |
+| `isActive` | Boolean | Status of the meeting session. |
+| `participants` | Array | Log of users who joined and their join times. |
+
+### 4.3 Document Schema (`documents`)
+Stores the state of the collaborative document for persistence.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `meetingId` | String | Links document to a specific meeting. |
+| `content` | Object | The raw Delta object from Quill editor (JSON). |
+| `versions` | Array | History of changes for version control. |
+
+---
+
+## 5. 🔌 API & Event Reference
+
+### 5.1 REST API Endpoints
+
+#### Authentication (`/api/auth`)
+*   `POST /register` - Create a new user account.
+*   `POST /login` - Authenticate and receive JWT.
+*   `POST /forgotpassword` - Initiate password reset email flow.
+*   `PUT /resetpassword/:token` - Set new password.
+
+#### Meeting Management (`/api/meetings`)
+*   `POST /` **[Protected]** - Create a new meeting room.
+*   `GET /:id` **[Protected]** - Fetch meeting metadata and validate ID.
+
+#### Utilities (`/api/upload`)
+*   `POST /` - Upload image/file attachment (Multipart Form Data).
+
+### 5.2 Real-Time Socket Events
+
+| Category | Event Name | Direction | Payload Description |
+| :--- | :--- | :--- | :--- |
+| **Signaling** | `join-room` | Client -> Server | `{ meetingId, userId, name }` |
+| | `user-connected` | Server -> Client | Notifies peers of a new user. |
+| | `offer` / `answer` | Bidirectional | WebRTC Session Description Protocol (SDP). |
+| **Whiteboard** | `draw-line` | Bidirectional | `{ x0, y0, x1, y1, color, width }` |
+| | `clear-canvas` | Client -> Server | Requests a board wipe. |
+| **Editor** | `send-changes` | bidirectional | Quill Delta object (text changes). |
+| | `cursor-change` | bidirectional | `{ index, length, name, color }` |
+| **AI** | `gesture-detected` | Client -> Local | Internal event triggering UI actions. |
+
+---
+
+## 6. 🦾 Feature Implementation Details
+
+### A. AI Gesture Controller
+The system runs a **ResNet-based** hand detection model in a background worker. It samples the webcam feed at 100ms intervals (throttled for performance).
+1.  **Detection**: `handpose` model identifies 21 key landmarks on the hand.
+2.  **Estimation**: `fingerpose` calculates the slope between key points (e.g., finger tips vs. knuckles).
+3.  **Action**:
+    *   **Open Palm** → Triggers "Raise Hand" event.
+    *   **Victory (V)** → Toggles "Mute/Unmute".
+    *   **Thumbs Up** → Sends Emoji Reaction.
+
+### B. Collaborative Whiteboard
+Implements an **Optimistic UI** update pattern.
+*   When a user draws, the line is rendered immediately on their local canvas (`<canvas>` API).
+*   The coordinate data is normalized (0.0 to 1.0) to handle different screen sizes and emitted via Socket.IO.
+*   Receiving clients map the normalized coordinates to their local viewport size and render the line.
+
+---
 
 ## 7. 🚀 Installation & Setup
 
-1.  **Prerequisites**: Node.js, MongoDB.
-2.  **Server Setup**:
+1.  **Clone the Repository**
     ```bash
-    cd server
-    npm install
-    # Create .env file with PORT, MONGO_URI, JWT_SECRET
-    npm start
+    git clone https://github.com/StartHawk/Void.git
     ```
-3.  **Client Setup**:
+
+2.  **Environment Configuration**
+    Create a `.env` file in the `server` directory:
+    ```env
+    PORT=5000
+    MONGO_URI=mongodb+srv://...
+    JWT_SECRET=your_secret_key
+    ```
+
+3.  **Install Dependencies**
     ```bash
-    cd client
+    # Install Root Dependencies
     npm install
-    npm run dev
+
+    # Install Client & Server Dependencies (Recursive)
+    npm run install-all
+    ```
+
+4.  **Start Development Servers**
+    ```bash
+    npm start
+    # Runs Server on :5000 and Client on :5173
     ```
