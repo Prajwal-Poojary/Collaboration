@@ -17,6 +17,8 @@ const GestureController: React.FC<GestureControllerProps> = ({ stream, isVideoOn
     const [model, setModel] = useState<handpose.HandPose | null>(null);
     const requestRef = useRef<number | null>(null);
     const lastGestureTime = useRef<number>(0);
+    const currentGestureName = useRef<string>('');
+    const consecutiveCount = useRef<number>(0);
     const onGestureDetectRef = useRef(onGestureDetect);
 
     useEffect(() => {
@@ -84,6 +86,24 @@ const GestureController: React.FC<GestureControllerProps> = ({ stream, isVideoOn
                 }
 
                 setEstimator(new fp.GestureEstimator([thumbsUp, openPalm, closedFist, victory, okSign]));
+
+                // Warm up the model to compile WebGL shaders
+                console.log('Warming up handpose model...');
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 640;
+                    canvas.height = 480;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+                    await loadedModel.estimateHands(canvas);
+                    console.log('Model warmed up successfully');
+                } catch (e) {
+                    console.warn('Silent failure during warmup', e);
+                }
+
                 if (onModelLoaded) onModelLoaded();
 
             } catch (err) {
@@ -123,23 +143,37 @@ const GestureController: React.FC<GestureControllerProps> = ({ stream, isVideoOn
             const predictions = await model.estimateHands(videoRef.current);
 
             if (predictions.length > 0) {
-                const gestureEstimations = estimator.estimate(predictions[0].landmarks, 8.5); // 8.5 is min confidence
+                const gestureEstimations = estimator.estimate(predictions[0].landmarks, 9.0); // 9.0 is min confidence
 
                 if (gestureEstimations.gestures.length > 0) {
-
                     // Find gesture with highest confidence
                     const gesture = gestureEstimations.gestures.reduce((p: any, c: any) => {
                         return (p.confidence > c.confidence) ? p : c;
                     });
 
-                    // Debounce
-                    const now = Date.now();
-                    if (now - lastGestureTime.current > 1500) { // 1.5s debounce
-                        console.log("Gesture Detected:", gesture.name, gesture.confidence);
-                        onGestureDetectRef.current(gesture.name);
-                        lastGestureTime.current = now;
+                    // Temporal consistency check
+                    if (currentGestureName.current === gesture.name) {
+                        consecutiveCount.current += 1;
+                    } else {
+                        currentGestureName.current = gesture.name;
+                        consecutiveCount.current = 1;
                     }
+
+                    // Require at least 4 consecutive frames of the same gesture
+                    if (consecutiveCount.current >= 4) {
+                        const now = Date.now();
+                        if (now - lastGestureTime.current > 2000) { // 2.0s debounce
+                            console.log("Confident Gesture Detected:", gesture.name, gesture.confidence);
+                            onGestureDetectRef.current(gesture.name);
+                            lastGestureTime.current = now;
+                            consecutiveCount.current = 0; // reset
+                        }
+                    }
+                } else {
+                    consecutiveCount.current = 0;
                 }
+            } else {
+                consecutiveCount.current = 0;
             }
         }
 
