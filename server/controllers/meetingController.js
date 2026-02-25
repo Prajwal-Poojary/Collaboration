@@ -36,7 +36,7 @@ const getMeeting = async (req, res) => {
 // @route   POST /api/meetings/schedule
 // @access  Private
 const scheduleMeeting = async (req, res) => {
-    const { title, scheduledAt, attendeeEmails } = req.body;
+    const { title, scheduledAt, attendeeEmails, clientUrl } = req.body;
     const meetingId = uuidv4();
 
     try {
@@ -46,6 +46,7 @@ const scheduleMeeting = async (req, res) => {
             title: title || 'Scheduled Meeting',
             scheduledAt,
             attendeeEmails: attendeeEmails || [],
+            clientUrl: clientUrl || 'http://localhost:5173',
         });
 
         res.status(201).json(scheduledMeeting);

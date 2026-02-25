@@ -15,6 +15,10 @@ const scheduledMeetingSchema = new mongoose.Schema({
         type: String,
         default: 'Scheduled Meeting',
     },
+    clientUrl: {
+        type: String,
+        default: 'http://localhost:5173'
+    },
     scheduledAt: {
         type: Date,
         required: true,

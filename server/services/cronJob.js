@@ -18,7 +18,7 @@ const getTransporter = () => {
 };
 
 const sendMeetingReminder = async (meeting, timeRemainingStr) => {
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const clientUrl = meeting.clientUrl || process.env.CLIENT_URL || 'http://localhost:5173';
     const meetingLink = `${clientUrl}/meeting/${meeting.meetingId}`;
 
     // Prepare the list of recipients

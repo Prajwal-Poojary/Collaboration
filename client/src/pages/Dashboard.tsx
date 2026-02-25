@@ -104,7 +104,8 @@ const Dashboard = () => {
             await axios.post('/api/meetings/schedule', {
                 title: scheduleTitle,
                 scheduledAt,
-                attendeeEmails: emails
+                attendeeEmails: emails,
+                clientUrl: window.location.origin
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
