@@ -92,7 +92,7 @@ const meetings = {}; // { meetingId: { adminId: string } }
 io.on('connection', (socket) => {
 
 
-    socket.on('join-room', ({ meetingId: rawMeetingId, userId, name }) => {
+    socket.on('join-room', async ({ meetingId: rawMeetingId, userId, name }) => {
         const meetingId = rawMeetingId?.trim().toLowerCase();
         console.log(`[Socket] User ${userId} (${name}) attempting to join room ${meetingId}. Socket ID: ${socket.id}`);
 
@@ -106,18 +106,29 @@ io.on('connection', (socket) => {
         // Admin Assignment Logic
         if (!meetings[meetingId]) {
             meetings[meetingId] = {
-                adminId: userId,
-                wiseAdmins: new Set(), // Set of userIds who are Wise Admins
+                adminId: userId, // Fallback default: first person who joins
+                wiseAdmins: new Set(),
                 mutedUsers: new Set(),
                 videoOffUsers: new Set(),
-                kickedUsers: new Set(), // Restricted (needs approval)
-                blockedUsers: new Set(), // Permanently banned
-                whiteboardElements: [], // Initialize whiteboard state
-                participants: {}, // { userId: { name, isOnline } }
-                whiteboardOwnerId: null, // Track who owns the whiteboard
-                activeSpeakers: new Map() // { userId: { volume, timestamp } }
+                kickedUsers: new Set(),
+                blockedUsers: new Set(),
+                whiteboardElements: [],
+                participants: {},
+                whiteboardOwnerId: null,
+                activeSpeakers: new Map()
             };
 
+            // Check if this is a scheduled meeting to enforce the actual host as admin
+            try {
+                const ScheduledMeeting = require('./models/ScheduledMeeting');
+                const scheduled = await ScheduledMeeting.findOne({ meetingId: meetingId });
+                if (scheduled && scheduled.host) {
+                    meetings[meetingId].adminId = scheduled.host.toString();
+                    console.log(`[Socket] Enforcing Scheduled Host as Admin: ${scheduled.host.toString()}`);
+                }
+            } catch (err) {
+                console.error('[Socket] Error checking scheduled meeting host:', err);
+            }
         }
 
         const meeting = meetings[meetingId];
