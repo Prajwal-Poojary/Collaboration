@@ -51,6 +51,25 @@ const Dashboard = () => {
         }
     };
 
+    const handleEndMeeting = async (meetingId: string) => {
+        if (!window.confirm("Are you sure you want to end this meeting? It will no longer be accessible.")) return;
+
+        try {
+            const userStr = localStorage.getItem('user');
+            if (!userStr) return;
+            const userData = JSON.parse(userStr);
+            const token = userData.token;
+
+            await axios.post(`/api/meetings/scheduled/${meetingId}/end`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchUpcomingMeetings();
+        } catch (error) {
+            console.error('Error ending scheduled meeting:', error);
+            alert('Failed to end meeting.');
+        }
+    };
+
     const createMeeting = () => {
         const newId = uuidv4();
         navigate(`/meeting/${newId}`);
@@ -313,12 +332,22 @@ const Dashboard = () => {
                                             {new Date(meeting.scheduledAt).toLocaleString()}
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => navigate(`/meeting/${meeting.meetingId}`)}
-                                        className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors"
-                                    >
-                                        Join
-                                    </button>
+                                    <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto mt-4 md:mt-0">
+                                        <button
+                                            onClick={() => navigate(`/meeting/${meeting.meetingId}`)}
+                                            className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors"
+                                        >
+                                            Join
+                                        </button>
+                                        {user && user._id === meeting.host?._id && (
+                                            <button
+                                                onClick={() => handleEndMeeting(meeting.meetingId)}
+                                                className="w-full md:w-auto px-6 py-2 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-500 rounded-xl font-medium transition-colors"
+                                            >
+                                                End
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>

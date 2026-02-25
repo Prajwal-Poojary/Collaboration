@@ -60,11 +60,11 @@ const scheduleMeeting = async (req, res) => {
 // @access  Private
 const getScheduledMeetings = async (req, res) => {
     try {
-        // Need upcoming meetings where user is host OR they are explicitly in the attendeeEmails
-        // Using $or to match either host or their email. We'll populate host for display.
+        // Need meetings where user is host OR they are explicitly in the attendeeEmails
+        // Only return meetings that haven't been ended yet
         const currentEmail = req.user.email;
         const upcomingMeetings = await ScheduledMeeting.find({
-            scheduledAt: { $gte: new Date() }, // only upcoming
+            isEnded: false,
             $or: [
                 { host: req.user._id },
                 { attendeeEmails: currentEmail }
@@ -80,4 +80,28 @@ const getScheduledMeetings = async (req, res) => {
     }
 };
 
-module.exports = { createMeeting, getMeeting, scheduleMeeting, getScheduledMeetings };
+// @desc    End a scheduled meeting
+// @route   POST /api/meetings/scheduled/:id/end
+// @access  Private
+const endScheduledMeeting = async (req, res) => {
+    try {
+        const meeting = await ScheduledMeeting.findOne({ meetingId: req.params.id });
+        if (!meeting) {
+            return res.status(404).json({ message: 'Scheduled meeting not found' });
+        }
+
+        // Only host can end it
+        if (meeting.host.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to end this meeting' });
+        }
+
+        meeting.isEnded = true;
+        await meeting.save();
+        res.json({ message: 'Meeting ended successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error ending meeting' });
+    }
+};
+
+module.exports = { createMeeting, getMeeting, scheduleMeeting, getScheduledMeetings, endScheduledMeeting };
