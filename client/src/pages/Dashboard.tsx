@@ -1,9 +1,10 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Video, Plus, User as UserIcon, LogOut, ArrowRight, Clock, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Video, Plus, User as UserIcon, LogOut, ArrowRight, Clock, Calendar, CalendarPlus, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 
 const Dashboard = () => {
     const { user, logout } = useContext(AuthContext)!;
@@ -12,6 +13,15 @@ const Dashboard = () => {
     const [greeting, setGreeting] = useState('');
     const [currentTime, setCurrentTime] = useState(new Date());
 
+    // Schedule States
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
+    const [scheduleTitle, setScheduleTitle] = useState('');
+    const [scheduleDate, setScheduleDate] = useState('');
+    const [scheduleTime, setScheduleTime] = useState('');
+    const [attendeeEmails, setAttendeeEmails] = useState('');
+    const [isScheduling, setIsScheduling] = useState(false);
+    const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
+
     useEffect(() => {
         const hour = new Date().getHours();
         if (hour < 12) setGreeting('Good Morning');
@@ -19,8 +29,27 @@ const Dashboard = () => {
         else setGreeting('Good Evening');
 
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+
+        fetchUpcomingMeetings();
+
         return () => clearInterval(timer);
     }, []);
+
+    const fetchUpcomingMeetings = async () => {
+        try {
+            const userStr = localStorage.getItem('user');
+            if (!userStr) return;
+            const userData = JSON.parse(userStr);
+            const token = userData.token;
+
+            const { data } = await axios.get('/api/meetings/scheduled', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setUpcomingMeetings(data);
+        } catch (error) {
+            console.error('Error fetching scheduled meetings:', error);
+        }
+    };
 
     const createMeeting = () => {
         const newId = uuidv4();
@@ -31,6 +60,48 @@ const Dashboard = () => {
         e.preventDefault();
         if (meetingId.trim()) {
             navigate(`/meeting/${meetingId}`);
+        }
+    };
+
+    const handleScheduleMeeting = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!scheduleDate || !scheduleTime) return;
+
+        setIsScheduling(true);
+        try {
+            const userStr = localStorage.getItem('user');
+            if (!userStr) throw new Error("Not logged in");
+            const userData = JSON.parse(userStr);
+            const token = userData.token;
+
+            const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+
+            // Handle comma separated emails
+            const emails = attendeeEmails
+                .split(',')
+                .map(email => email.trim())
+                .filter(email => email !== '');
+
+            await axios.post('/api/meetings/schedule', {
+                title: scheduleTitle,
+                scheduledAt,
+                attendeeEmails: emails
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setShowScheduleModal(false);
+            setScheduleTitle('');
+            setScheduleDate('');
+            setScheduleTime('');
+            setAttendeeEmails('');
+            fetchUpcomingMeetings();
+
+        } catch (error) {
+            console.error('Error scheduling meeting:', error);
+            alert('Failed to schedule meeting.');
+        } finally {
+            setIsScheduling(false);
         }
     };
 
@@ -95,12 +166,12 @@ const Dashboard = () => {
                 </div>
             </header>
 
-            <main className="relative z-10 flex flex-col justify-center min-h-screen max-w-6xl mx-auto px-6 pt-20 pb-10">
+            <main className="relative z-10 flex flex-col justify-center min-h-screen max-w-6xl mx-auto px-6 pt-24 pb-10">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
-                    className="mb-16"
+                    className="mb-12"
                 >
                     <h2 className="text-5xl md:text-6xl font-bold font-display tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-gray-500">
                         {greeting}, <br />
@@ -109,73 +180,103 @@ const Dashboard = () => {
                         </span>
                     </h2>
                     <p className="text-xl text-gray-400 max-w-xl leading-relaxed">
-                        Ready to collaborate? Start a new session or jump into an existing one with your team.
+                        Ready to collaborate? Start a new session, schedule one for later, or jump right into your team.
                     </p>
                 </motion.div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch mb-12">
                     {/* New Meeting Card */}
                     <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2, duration: 0.5 }}
                         className="group relative cursor-pointer"
                         onClick={createMeeting}
                     >
                         <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl blur opacity-25 group-hover:opacity-40 transition-opacity duration-500" />
-                        <div className="relative h-full bg-[#121212] border border-white/10 rounded-3xl p-8 flex flex-col justify-between overflow-hidden group-hover:border-indigo-500/30 transition-all duration-300">
-                            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
-                                <Video size={120} />
+                        <div className="relative h-full bg-[#121212] border border-white/10 rounded-3xl p-6 flex flex-col justify-between overflow-hidden group-hover:border-indigo-500/30 transition-all duration-300">
+                            <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+                                <Video size={100} />
                             </div>
 
-                            <div className="space-y-6 relative z-10">
-                                <div className="w-14 h-14 bg-indigo-500/20 rounded-2xl flex items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-500/30 transition-colors">
-                                    <Plus size={28} className="text-indigo-400" />
+                            <div className="space-y-4 relative z-10">
+                                <div className="w-12 h-12 bg-indigo-500/20 rounded-2xl flex items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-500/30 transition-colors">
+                                    <Plus size={24} className="text-indigo-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-3xl font-bold mb-2">Instant Meeting</h3>
-                                    <p className="text-gray-400">Create a new secure meeting space and invite others instantly.</p>
+                                    <h3 className="text-2xl font-bold mb-2">Instant Meeting</h3>
+                                    <p className="text-sm text-gray-400">Create a new secure meeting space instantly.</p>
                                 </div>
                             </div>
 
-                            <div className="mt-8 flex items-center font-medium text-indigo-400 group-hover:text-indigo-300 transition-colors">
-                                Start Session <ArrowRight size={18} className="ml-2 transform group-hover:translate-x-1 transition-transform" />
+                            <div className="mt-8 flex items-center text-sm font-medium text-indigo-400 group-hover:text-indigo-300 transition-colors">
+                                Start Session <ArrowRight size={16} className="ml-2 transform group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        </div>
+                    </motion.div>
+
+                    {/* Schedule Meeting Card */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3, duration: 0.5 }}
+                        className="group relative cursor-pointer"
+                        onClick={() => setShowScheduleModal(true)}
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-3xl blur opacity-25 group-hover:opacity-40 transition-opacity duration-500" />
+                        <div className="relative h-full bg-[#121212] border border-white/10 rounded-3xl p-6 flex flex-col justify-between overflow-hidden group-hover:border-blue-500/30 transition-all duration-300">
+                            <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+                                <CalendarPlus size={100} />
+                            </div>
+
+                            <div className="space-y-4 relative z-10">
+                                <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center border border-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
+                                    <CalendarPlus size={24} className="text-blue-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold mb-2">Schedule</h3>
+                                    <p className="text-sm text-gray-400">Plan ahead and automatically invite participants.</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-8 flex items-center text-sm font-medium text-blue-400 group-hover:text-blue-300 transition-colors">
+                                Plan Meeting <ArrowRight size={16} className="ml-2 transform group-hover:translate-x-1 transition-transform" />
                             </div>
                         </div>
                     </motion.div>
 
                     {/* Join Meeting Card */}
                     <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.3, duration: 0.5 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4, duration: 0.5 }}
                         className="group relative"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-pink-600 rounded-3xl blur opacity-0 group-hover:opacity-20 transition-opacity duration-500" />
-                        <div className="relative h-full bg-[#121212] border border-white/10 rounded-3xl p-8 flex flex-col justify-between overflow-hidden group-hover:border-purple-500/30 transition-all duration-300">
-                            <div className="space-y-6">
-                                <div className="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center border border-purple-500/20 group-hover:bg-purple-500/30 transition-colors">
-                                    <UserIcon size={28} className="text-purple-400" />
+                        <div className="absolute inset-0 bg-gradient-to-br from-pink-600 to-orange-600 rounded-3xl blur opacity-0 group-hover:opacity-20 transition-opacity duration-500" />
+                        <div className="relative h-full bg-[#121212] border border-white/10 rounded-3xl p-6 flex flex-col justify-between overflow-hidden group-hover:border-pink-500/30 transition-all duration-300">
+                            <div className="space-y-4">
+                                <div className="w-12 h-12 bg-pink-500/20 rounded-2xl flex items-center justify-center border border-pink-500/20 group-hover:bg-pink-500/30 transition-colors">
+                                    <UserIcon size={24} className="text-pink-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-3xl font-bold mb-2">Join Meeting</h3>
-                                    <p className="text-gray-400">Enter a code to connect with your team.</p>
+                                    <h3 className="text-2xl font-bold mb-2">Join Meeting</h3>
+                                    <p className="text-sm text-gray-400">Enter a code to connect with your team.</p>
                                 </div>
                             </div>
 
-                            <form onSubmit={joinMeeting} className="mt-8 relative">
-                                <div className="relative group/input">
+                            <form onSubmit={joinMeeting} className="mt-6 relative">
+                                <div className="relative group/input flex items-center">
                                     <input
                                         type="text"
                                         placeholder="Meeting Code"
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 pr-32 text-lg focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-gray-600"
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 pr-20 text-sm focus:outline-none focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/50 transition-all placeholder:text-gray-600"
                                         value={meetingId}
                                         onChange={(e) => setMeetingId(e.target.value)}
                                     />
                                     <button
                                         type="submit"
                                         disabled={!meetingId}
-                                        className="absolute right-2 top-2 bottom-2 px-6 bg-white/10 hover:bg-purple-600 disabled:opacity-30 disabled:hover:bg-white/10 text-white rounded-lg font-medium transition-all duration-300"
+                                        className="absolute right-1.5 px-4 py-1.5 bg-white/10 hover:bg-pink-600 disabled:opacity-30 disabled:hover:bg-white/10 text-white rounded-lg text-sm font-medium transition-all duration-300"
                                     >
                                         Join
                                     </button>
@@ -185,12 +286,51 @@ const Dashboard = () => {
                     </motion.div>
                 </div>
 
+                {/* Upcoming Meetings List */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5, duration: 0.5 }}
+                    className="bg-[#121212] border border-white/10 rounded-3xl p-8"
+                >
+                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                        <Calendar size={24} className="text-indigo-400" /> Upcoming Meetings
+                    </h3>
+
+                    {upcomingMeetings.length === 0 ? (
+                        <p className="text-gray-400 text-center py-8">No upcoming meetings scheduled.</p>
+                    ) : (
+                        <div className="space-y-4">
+                            {upcomingMeetings.map((meeting) => (
+                                <div key={meeting._id} className="flex flex-col md:flex-row items-center justify-between p-4 bg-black/40 border border-white/5 rounded-xl hover:border-indigo-500/30 transition-colors">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-6 w-full md:w-auto mb-4 md:mb-0">
+                                        <div className="flex flex-col">
+                                            <span className="text-lg font-semibold">{meeting.title}</span>
+                                            <span className="text-sm text-gray-400">Host: {meeting.host?.name || 'Unknown'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-indigo-300 bg-indigo-500/10 px-3 py-1.5 rounded-lg">
+                                            <Clock size={16} />
+                                            {new Date(meeting.scheduledAt).toLocaleString()}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => navigate(`/meeting/${meeting.meetingId}`)}
+                                        className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors"
+                                    >
+                                        Join
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </motion.div>
+
                 {/* Footer / Quick Links */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.6 }}
-                    className="mt-20 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500"
+                    className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center text-sm text-gray-500"
                 >
                     <p>© 2026 Void Collaboration. All rights reserved.</p>
                     <div className="flex gap-6 mt-4 md:mt-0">
@@ -200,6 +340,94 @@ const Dashboard = () => {
                     </div>
                 </motion.div>
             </main>
+
+            {/* Schedule Meeting Modal */}
+            <AnimatePresence>
+                {showScheduleModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-[#121212] border border-white/10 rounded-2xl p-6 md:p-8 w-full max-w-lg shadow-2xl relative"
+                        >
+                            <button
+                                onClick={() => setShowScheduleModal(false)}
+                                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                            >
+                                <X size={24} />
+                            </button>
+
+                            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+                                <CalendarPlus className="text-blue-500" />
+                                Schedule a Meeting
+                            </h2>
+
+                            <form onSubmit={handleScheduleMeeting} className="space-y-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Meeting Title</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. Weekly Standup"
+                                        value={scheduleTitle}
+                                        onChange={(e) => setScheduleTitle(e.target.value)}
+                                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-400 mb-2">Date</label>
+                                        <input
+                                            type="date"
+                                            required
+                                            value={scheduleDate}
+                                            onChange={(e) => setScheduleDate(e.target.value)}
+                                            min={new Date().toISOString().split('T')[0]} // Cannot schedule in the past
+                                            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-400 mb-2">Time</label>
+                                        <input
+                                            type="time"
+                                            required
+                                            value={scheduleTime}
+                                            onChange={(e) => setScheduleTime(e.target.value)}
+                                            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                                        Attendee Emails <span className="text-xs text-gray-500">(comma separated)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="john@example.com, jane@example.com"
+                                        value={attendeeEmails}
+                                        onChange={(e) => setAttendeeEmails(e.target.value)}
+                                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isScheduling}
+                                    className="w-full py-4 mt-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors"
+                                >
+                                    {isScheduling ? 'Scheduling...' : 'Schedule Meeting'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

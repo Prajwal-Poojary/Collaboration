@@ -1,4 +1,5 @@
 const Meeting = require('../models/Meeting');
+const ScheduledMeeting = require('../models/ScheduledMeeting');
 const { v4: uuidv4 } = require('uuid');
 
 // @desc    Create new meeting
@@ -31,4 +32,52 @@ const getMeeting = async (req, res) => {
     }
 };
 
-module.exports = { createMeeting, getMeeting };
+// @desc    Schedule a meeting
+// @route   POST /api/meetings/schedule
+// @access  Private
+const scheduleMeeting = async (req, res) => {
+    const { title, scheduledAt, attendeeEmails } = req.body;
+    const meetingId = uuidv4();
+
+    try {
+        const scheduledMeeting = await ScheduledMeeting.create({
+            meetingId,
+            host: req.user._id,
+            title: title || 'Scheduled Meeting',
+            scheduledAt,
+            attendeeEmails: attendeeEmails || [],
+        });
+
+        res.status(201).json(scheduledMeeting);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error scheduling meeting' });
+    }
+};
+
+// @desc    Get scheduled meetings
+// @route   GET /api/meetings/scheduled
+// @access  Private
+const getScheduledMeetings = async (req, res) => {
+    try {
+        // Need upcoming meetings where user is host OR they are explicitly in the attendeeEmails
+        // Using $or to match either host or their email. We'll populate host for display.
+        const currentEmail = req.user.email;
+        const upcomingMeetings = await ScheduledMeeting.find({
+            scheduledAt: { $gte: new Date() }, // only upcoming
+            $or: [
+                { host: req.user._id },
+                { attendeeEmails: currentEmail }
+            ]
+        })
+            .populate('host', 'name email')
+            .sort({ scheduledAt: 1 }); // Sort by soonest
+
+        res.json(upcomingMeetings);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error fetching scheduled meetings' });
+    }
+};
+
+module.exports = { createMeeting, getMeeting, scheduleMeeting, getScheduledMeetings };

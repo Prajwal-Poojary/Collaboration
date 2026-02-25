@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const meetingRoutes = require('./routes/meetingRoutes');
+const { startCronJobs } = require('./services/cronJob');
 
 const Message = require('./models/Message');
 const Document = require('./models/Document');
@@ -17,6 +18,8 @@ const envPath = path.join(__dirname, '.env');
 dotenv.config({ path: envPath });
 
 connectDB();
+
+startCronJobs();
 
 const app = express();
 const server = http.createServer(app);
