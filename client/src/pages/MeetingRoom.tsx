@@ -8,7 +8,6 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff, Share, MessageSquare, Users, In
 import GestureController from '../components/GestureController';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 import Whiteboard from '../components/Whiteboard';
-import CollaborativeEditor from '../components/CollaborativeEditor';
 
 interface Peer {
     userId: string;
@@ -112,7 +111,6 @@ const MeetingRoom = () => {
     // Whiteboard State
     const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
     const [whiteboardOwnerId, setWhiteboardOwnerId] = useState<string | null>(null);
-    const [isDocOpen, setIsDocOpen] = useState(false);
     const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]); // userId list
 
     // Pin State
@@ -530,16 +528,6 @@ const MeetingRoom = () => {
             setIsWhiteboardOpen(false);
         });
 
-        newSocket.on('doc-started', () => {
-            setIsDocOpen(true);
-            showToast("Collaborative Document Opened");
-        });
-
-        newSocket.on('doc-stopped', () => {
-            setIsDocOpen(false);
-            showToast("Collaborative Document Closed");
-        });
-
         // Media Setup - Join room ONLY after success or failure of media
         navigator.mediaDevices.getUserMedia({
             video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
@@ -752,8 +740,6 @@ const MeetingRoom = () => {
     const toggleWhiteboard = () => {
         if (!socket) return;
 
-        if (isDocOpen) setIsDocOpen(false); // Close doc if opening whiteboard
-
         if (isWhiteboardOpen) {
             // Only owner can close it for everyone
             if (whiteboardOwnerId === user?._id) {
@@ -769,32 +755,7 @@ const MeetingRoom = () => {
         }
     };
 
-    const toggleDocument = () => {
-        if (isWhiteboardOpen) {
-            alert("Please close the whiteboard first.");
-            return;
-        }
 
-
-
-        if (!socket) {
-            console.error("Socket not initialized");
-            alert("Connection not established. Please wait.");
-            return;
-        }
-
-        if (isDocOpen) {
-            // Close logic
-            if (confirm("Close document for all participants?")) {
-                setIsDocOpen(false); // Immediate local update
-                socket.emit('doc-stop', { meetingId });
-            }
-        } else {
-            // Open logic
-            setIsDocOpen(true); // Immediate local update
-            socket.emit('doc-start', { meetingId });
-        }
-    };
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1655,21 +1616,6 @@ const MeetingRoom = () => {
                 )}
             </div>
 
-            {/* Document Editor Overlay */}
-            {isDocOpen && (
-                <div className="absolute inset-0 z-40 bg-gray-100 p-4 pt-20"> {/* pt-20 to clear top bar or just fill space */}
-                    <div className="h-full max-w-5xl mx-auto flex flex-col bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden relative">
-                        {/* Close button inside overlay */}
-                        <div className="absolute top-2 right-2 z-50">
-                            <button onClick={toggleDocument} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full text-gray-600" title="Close for everyone">
-                                <X size={20} />
-                            </button>
-                        </div>
-                        {user && <CollaborativeEditor socket={socket} meetingId={meetingId || ''} user={user} />}
-                    </div>
-                </div>
-            )}
-
             {/* Modern Control Bar Dock */}
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-auto max-w-[90vw]">
                 {/* Main Dock Container */}
@@ -1716,14 +1662,6 @@ const MeetingRoom = () => {
                             activeClass="bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
                             inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
                             title="Toggle Whiteboard"
-                        />
-                        <ControlBtn
-                            onClick={toggleDocument}
-                            isActive={isDocOpen}
-                            icon={<FileText size={20} />}
-                            activeClass="bg-blue-500 text-white shadow-lg shadow-blue-500/20"
-                            inactiveClass="hover:bg-white/10 text-gray-400 hover:text-white"
-                            title="Collaborative Document"
                         />
                     </div>
 
