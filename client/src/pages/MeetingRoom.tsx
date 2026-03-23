@@ -201,12 +201,14 @@ const MeetingRoom = () => {
         };
 
         peerConnection.ontrack = (event) => {
-
             setPeers(prev => {
-                if (!prev.find(p => p.userId === targetUserId)) {
-                    return [...prev, { userId: targetUserId, stream: event.streams[0], name }];
+                const existingPeerIndex = prev.findIndex(p => p.userId === targetUserId);
+                if (existingPeerIndex !== -1) {
+                    const newPeers = [...prev];
+                    newPeers[existingPeerIndex] = { ...newPeers[existingPeerIndex], stream: event.streams[0] };
+                    return newPeers;
                 }
-                return prev;
+                return [...prev, { userId: targetUserId, stream: event.streams[0], name }];
             });
         };
 
@@ -243,52 +245,7 @@ const MeetingRoom = () => {
 
         let localAudioInterval: ReturnType<typeof setInterval> | null = null;
 
-        navigator.mediaDevices.getUserMedia({
-            video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 }
-            },
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000, // High fidelity audio
-                sampleSize: 16,
-                channelCount: 1
-            }
-        })
-            .then((initialStream) => {
-                setStream(initialStream);
-                // We don't need to set srcObject here because the partial useEffect above handles it when stream state updates
 
-                // --- Audio Analysis for Active Speaker Detection ---
-                const audioContext = new AudioContext();
-                const source = audioContext.createMediaStreamSource(initialStream);
-                const analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
-                source.connect(analyser);
-
-                const pcmData = new Float32Array(analyser.fftSize);
-
-                const checkAudioLevel = () => {
-                    analyser.getFloatTimeDomainData(pcmData);
-                    let sumSquares = 0.0;
-                    for (const amplitude of pcmData) { sumSquares += amplitude * amplitude; }
-                    const rms = Math.sqrt(sumSquares / pcmData.length);
-
-                    // Threshold to send update (adjust as needed)
-                    if (rms > 0.02) {
-                        newSocket.emit('audio-level', { meetingId, userId: user?._id, volume: rms });
-                    }
-                };
-
-                localAudioInterval = setInterval(checkAudioLevel, 100);
-            })
-            .catch(err => {
-                console.error('Error accessing media:', err);
-                showToast("Media access denied. You can still use chat.");
-            });
 
         // --- REGISTER SOCKET LISTENERS IMMEDIATELY ---
         newSocket.on('room-role', ({ isAdmin, mutedUsers, videoOffUsers, adminId }: { isAdmin: boolean, mutedUsers?: string[], videoOffUsers?: string[], adminId?: string }) => {
