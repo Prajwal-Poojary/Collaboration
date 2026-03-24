@@ -381,6 +381,7 @@ const MeetingRoom = () => {
         newSocket.on('offer', async ({ offer, sender, name }: OfferPayload) => {
             console.log(`[WebRTC] Received offer from ${name} (${sender})`);
             const peerConnection = createPeerConnection(sender, newSocket, name);
+            
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
 
             if (candidateBuffer.current[sender]) {
@@ -1693,6 +1694,22 @@ const VideoDisplay = ({ stream, name, isLocal = false, isMirrored = false, isMic
     useEffect(() => {
         if (videoRef.current && stream) {
             videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(e => console.log("Play failed", e));
+            
+            const handleTrackEvent = () => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(e => console.log("Play failed", e));
+                }
+            };
+            
+            stream.addEventListener('addtrack', handleTrackEvent);
+            stream.addEventListener('removetrack', handleTrackEvent);
+            
+            return () => {
+                stream.removeEventListener('addtrack', handleTrackEvent);
+                stream.removeEventListener('removetrack', handleTrackEvent);
+            };
         }
     }, [stream, isVideoOn]);
 
