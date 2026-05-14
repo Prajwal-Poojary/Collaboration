@@ -77,11 +77,11 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../client/dist')));
-    app.get('/(.*)', (req, res) => {
-        if (!req.originalUrl.startsWith('/api')) {
+    app.use((req, res, next) => {
+        if (req.method === 'GET' && !req.originalUrl.startsWith('/api')) {
             res.sendFile(path.resolve(__dirname, '../client', 'dist', 'index.html'));
         } else {
-            res.status(404).json({ message: 'API Route Not Found' });
+            next();
         }
     });
 } else {
