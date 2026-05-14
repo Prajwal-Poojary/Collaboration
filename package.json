@@ -3,8 +3,8 @@
     "version": "1.0.0",
     "description": "Real-time Video Conferencing & Collaboration Platform",
     "scripts": {
-        "install-all": "npm install && cd client && npm install && cd ../server && npm install",
-        "postinstall": "cd client && npm install && cd ../server && npm install",
+        "install-all": "npm install && cd client && npm install --include=dev && cd ../server && npm install",
+        "postinstall": "cd client && npm install --include=dev && cd ../server && npm install",
         "start": "concurrently \"npm run start:server\" \"npm run start:client\"",
         "start:server": "cd server && npm start",
         "start:client": "cd client && npm run dev",
